@@ -16,6 +16,9 @@ You don't need to install anything! Access the full application directly in your
 
 - **Visual Analytics 📊**:
     -   **Performance Trend**: Interactive chart showing your SGPA vs. Cumulative CGPA progression over time.
+- **Smart Import 🪄**:
+    -   **Direct PDF Upload**: Upload your "Provisional Grade History" PDF directly. We use `pdf.js` to securely parse it in your browser.
+    -   **Intelligent Parsing**: Detects course codes, credits, grades, and semesters automatically.
 - **Reverse Calculator 🎯**:
     -   **Path to Target**: Calculate exactly what GPA you need in remaining credits to hit your dream CGPA.
 - **Multi-Scale GPA Calculation**: Automatically calculates and converts grades between:

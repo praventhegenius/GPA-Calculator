@@ -22,6 +22,12 @@
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -257,7 +263,312 @@
             };
         };
 
+        // --- PARSING LOGIC ---
+        const parseGradeHistory = (text) => {
+            const semesterGroups = {};
+
+            // Regex for extracting course details
+            // Format: Code | Title | Type | Credits | Grade | Exam Month
+            // Example: "BCHY101L Engineering Chemistry TH 3.0 C Dec-2023"
+            // We use a global regex to find all matches in the text, ignoring line breaks
+            const courseRegex = /([A-Z]{3,4}\d{3,4}[A-Z]?)\s+(.+?)\s+([A-Z]{2,3})\s+(\d+(?:\.\d+)?)\s+([SABCDEFNP])\s+([A-Za-z]{3}-\d{4})/g;
+
+            const matches = text.matchAll(courseRegex);
+            const allCourses = [];
+
+            for (const match of matches) {
+                const [_, code, title, type, creditsStr, grade, examMonth] = match;
+                const credits = parseFloat(creditsStr);
+
+                // Ignore if credits is NaN
+                if (isNaN(credits)) continue;
+
+                const course = {
+                    id: Date.now() + Math.random(),
+                    code,
+                    name: title.trim(),
+                    credits,
+                    grade,
+                    examMonth,
+                    type,
+                    isGraded: grade !== 'P' && grade !== 'N' // P=Pass (non-graded), N=Not appearing
+                };
+
+                allCourses.push(course);
+            }
+
+            // Handle Duplicates / Retakes
+            // Strategy:
+            // 1. Find the attempt with the BEST grade (to use for GPA).
+            // 2. Find the attempt with the EARLIEST date (to place in the correct semester).
+            // 3. Merge them: Use Best Grade + Original Date.
+
+            const gradeRank = { 'S': 10, 'A': 9, 'B': 8, 'C': 7, 'D': 6, 'E': 5, 'P': 4, 'F': 0, 'N': 0 };
+            const uniqueCourses = {};
+
+            allCourses.forEach(course => {
+                if (!uniqueCourses[course.code]) {
+                    uniqueCourses[course.code] = {
+                        bestAttempt: course,
+                        originalAttempt: course
+                    };
+                } else {
+                    const existing = uniqueCourses[course.code];
+
+                    // Update Best Attempt (Highest Grade)
+                    const currentRank = gradeRank[course.grade] || 0;
+                    const bestRank = gradeRank[existing.bestAttempt.grade] || 0;
+                    if (currentRank > bestRank) {
+                        existing.bestAttempt = course;
+                    }
+
+                    // Update Original Attempt (Earliest Date)
+                    // Note: "Dec-2023" parses correctly in JS Date
+                    const currentDate = new Date(course.examMonth);
+                    const originalDate = new Date(existing.originalAttempt.examMonth);
+                    if (currentDate < originalDate) {
+                        existing.originalAttempt = course;
+                    }
+                }
+            });
+
+            // Create final course list merging Best Grade with Original Date
+            const courses = Object.values(uniqueCourses).map(obj => {
+                return {
+                    ...obj.bestAttempt,
+                    examMonth: obj.originalAttempt.examMonth
+                };
+            });
+
+            // Sort unique exam months chronologically
+            const months = [...new Set(courses.map(c => c.examMonth))].sort((a, b) => {
+                const dateA = new Date(a);
+                const dateB = new Date(b);
+                return dateA - dateB;
+            });
+
+            // Cluster into semesters
+            const semesterMap = {};
+            months.forEach((month, index) => {
+                semesterMap[month] = index + 1;
+            });
+
+            // Group courses by semester
+            courses.forEach(course => {
+                const semId = semesterMap[course.examMonth];
+                if (!semesterGroups[semId]) {
+                    semesterGroups[semId] = {
+                        id: Date.now() + semId,
+                        name: `Semester ${semId} (${course.examMonth})`,
+                        subjects: []
+                    };
+                }
+
+                semesterGroups[semId].subjects.push({
+                    id: course.id,
+                    name: course.name,
+                    credits: course.credits,
+                    grade: course.grade
+                });
+            });
+
+            return Object.values(semesterGroups).sort((a, b) => a.name.localeCompare(b.name));
+        };
+
+        const extractTextFromPDF = async (file) => {
+            const arrayBuffer = await file.arrayBuffer();
+            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+            let fullText = '';
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const textContent = await page.getTextContent();
+                const pageText = textContent.items.map(item => item.str).join(' ');
+                fullText += pageText + '\n';
+            }
+
+            return fullText;
+        };
+
         // --- COMPONENTS ---
+
+        const SmartImportModal = ({ isOpen, onClose, onImport }) => {
+            const [file, setFile] = useState(null);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [previewData, setPreviewData] = useState(null);
+            const [error, setError] = useState(null);
+
+            if (!isOpen) return null;
+
+            const handleFileChange = (e) => {
+                if (e.target.files && e.target.files[0]) {
+                    setFile(e.target.files[0]);
+                    setError(null);
+                }
+            };
+
+            const handleParse = async () => {
+                if (!file) return;
+
+                setIsProcessing(true);
+                setError(null);
+
+                try {
+                    const text = await extractTextFromPDF(file);
+                    const parsed = parseGradeHistory(text);
+
+                    if (parsed.length === 0) {
+                        setError('No valid courses found. Please ensure this is a valid Grade History PDF.');
+                    } else {
+                        setPreviewData(parsed);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    setError('Failed to process PDF. ' + e.message);
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            const handleConfirm = () => {
+                onImport(previewData);
+                onClose();
+                setFile(null);
+                setPreviewData(null);
+            };
+
+            const handleClose = () => {
+                onClose();
+                setFile(null);
+                setPreviewData(null);
+                setError(null);
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <div>
+                                <h3 className="text-xl font-bold text-slate-800">Smart Import</h3>
+                                <p className="text-sm text-slate-500">Upload your Grade History PDF</p>
+                            </div>
+                            <button onClick={handleClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                <i className="ph-bold ph-x text-xl"></i>
+                            </button>
+                        </div>
+
+                        <div className="p-6 overflow-y-auto flex-grow space-y-6">
+                            {!previewData ? (
+                                <div className="space-y-6">
+                                    <div className="bg-blue-50 p-4 rounded-xl text-blue-700 text-sm flex gap-3 items-start">
+                                        <i className="ph-fill ph-info text-lg mt-0.5"></i>
+                                        <div>
+                                            <p className="font-bold mb-1">Instructions:</p>
+                                            <ol className="list-decimal list-inside space-y-1 opacity-90">
+                                                <li>Download your "Provisional Grade History" PDF from VTOP.</li>
+                                                <li>Upload the file below.</li>
+                                                <li>We'll extract your grades automatically.</li>
+                                            </ol>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-2 border-dashed border-slate-300 rounded-2xl p-8 text-center hover:bg-slate-50 transition-colors relative">
+                                        <input
+                                            type="file"
+                                            accept=".pdf"
+                                            onChange={handleFileChange}
+                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                        />
+                                        <div className="w-16 h-16 bg-primary-50 text-primary-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                            <i className="ph-bold ph-file-pdf text-3xl"></i>
+                                        </div>
+                                        {file ? (
+                                            <div>
+                                                <p className="font-bold text-slate-800 text-lg mb-1">{file.name}</p>
+                                                <p className="text-slate-500 text-sm">{(file.size / 1024).toFixed(1)} KB</p>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <p className="font-bold text-slate-800 text-lg mb-1">Click to Upload PDF</p>
+                                                <p className="text-slate-500 text-sm">or drag and drop here</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {error && (
+                                        <div className="text-red-500 text-sm font-medium flex items-center gap-2 animate-slide-up">
+                                            <i className="ph-bold ph-warning-circle"></i> {error}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-bold text-slate-700">Preview Import</h4>
+                                        <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">
+                                            {previewData.reduce((acc, sem) => acc + sem.subjects.length, 0)} Courses Found
+                                        </span>
+                                    </div>
+                                    <div className="space-y-3">
+                                        {previewData.map((sem, idx) => (
+                                            <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="font-bold text-slate-700 text-sm">{sem.name}</span>
+                                                    <span className="text-xs text-slate-500">{sem.subjects.length} courses</span>
+                                                </div>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {sem.subjects.map((sub, sIdx) => (
+                                                        <span key={sIdx} className="text-[10px] font-mono bg-white border border-slate-200 px-2 py-1 rounded text-slate-600">
+                                                            {sub.name} ({sub.grade})
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+                            {!previewData ? (
+                                <button
+                                    onClick={handleParse}
+                                    disabled={!file || isProcessing}
+                                    className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {isProcessing ? (
+                                        <>
+                                            <i className="ph-bold ph-spinner animate-spin"></i> Processing...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <i className="ph-bold ph-magic-wand"></i> Parse PDF
+                                        </>
+                                    )}
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => setPreviewData(null)}
+                                        className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        onClick={handleConfirm}
+                                        className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2"
+                                    >
+                                        <i className="ph-bold ph-check"></i> Confirm Import
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
 
         const AnalyticsCard = ({ history, current }) => {
             const chartRef = useRef(null);
@@ -622,6 +933,7 @@
             // State: Calculator (The Playground)
             const [currentSemSubjects, setCurrentSemSubjects] = useState(INITIAL_CURRENT_SEM);
             const [config, setConfig] = useState(INITIAL_CONFIG);
+            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
             const [isLoaded, setIsLoaded] = useState(false);
 
@@ -877,7 +1189,7 @@
                                 <i className="ph-bold ph-download-simple"></i> Export
                             </button>
                             <label className="flex-1 py-3 glass-card rounded-xl text-sm font-medium text-slate-600 hover:text-primary-600 hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer">
-                                <i className="ph-bold ph-upload-simple"></i> Import
+                                <i className="ph-bold ph-upload-simple"></i> Import CSV
                                 <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
                             </label>
                         </div>
@@ -892,9 +1204,14 @@
                             <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Student Profile</h2>
                             <p className="text-slate-500">Build your academic history semester by semester.</p>
                         </div>
-                        <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="btn-primary px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
-                            <i className="ph-bold ph-plus"></i> Add Semester
-                        </button>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-slate-600 hover:text-primary-600 hover:bg-slate-50 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm border border-slate-200 transition-all">
+                                <i className="ph-bold ph-magic-wand"></i> Smart Import
+                            </button>
+                            <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="btn-primary px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                                <i className="ph-bold ph-plus"></i> Add Semester
+                            </button>
+                        </div>
                     </div>
 
                     {profileSemesters.length === 0 ? (
@@ -1057,6 +1374,15 @@
                     {view === 'dashboard' && <CalculatorView />}
                     {view === 'profile' && <ProfileView />}
                     {view === 'report' && <ReportView />}
+
+                    <SmartImportModal
+                        isOpen={isImportModalOpen}
+                        onClose={() => setIsImportModalOpen(false)}
+                        onImport={(data) => {
+                            setProfileSemesters(data);
+                            setView('profile');
+                        }}
+                    />
                 </div>
             );
         };
