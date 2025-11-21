@@ -3,284 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal GPA Calculator</title>
+    <title>Academic Performance Dashboard</title>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Phosphor Icons (Clean, Professional Icons) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        /* Professional Engineering Texture */
         body {
             font-family: 'Inter', sans-serif;
+            background-color: #F3F4F6;
+            background-image: radial-gradient(#E5E7EB 1px, transparent 1px);
+            background-size: 24px 24px;
+            -webkit-font-smoothing: antialiased;
         }
-        .grade-select {
-            appearance: none;
-            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-            background-position: right 0.5rem center;
-            background-repeat: no-repeat;
-            background-size: 1.5em 1.5em;
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
         }
-        .tab-active {
-            border-bottom: 2px solid #4f46e5;
-            color: #4f46e5;
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-        .tab-inactive {
-            border-bottom: 2px solid transparent;
-            color: #6b7280;
+        ::-webkit-scrollbar-track {
+            background: transparent;
         }
-        .german-flag {
-            background: linear-gradient(to bottom, #000000 33%, #DD0000 33%, #DD0000 66%, #FFCE00 66%);
+        ::-webkit-scrollbar-thumb {
+            background: #D1D5DB;
+            border-radius: 4px;
         }
-        /* Custom Toggle */
+        ::-webkit-scrollbar-thumb:hover {
+            background: #9CA3AF;
+        }
+
+        /* Toggle Switch */
         .toggle-checkbox:checked {
             right: 0;
-            border-color: #4f46e5;
+            border-color: #2563EB;
         }
         .toggle-checkbox:checked + .toggle-label {
-            background-color: #4f46e5;
+            background-color: #2563EB;
         }
-        /* Input hiding for cleaner look */
-        .no-spinner::-webkit-inner-spin-button, 
-        .no-spinner::-webkit-outer-spin-button { 
-            -webkit-appearance: none; 
-            margin: 0; 
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
         }
     </style>
-</head>
-<body class="bg-slate-50 min-h-screen text-slate-800 pb-20">
-
-    <!-- Navigation -->
-    <div class="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-200">
-        <div class="max-w-5xl mx-auto px-4">
-            <div class="flex flex-col sm:flex-row justify-between items-center py-2 sm:py-0 gap-4 sm:gap-0">
-                <!-- Tabs -->
-                <div class="flex space-x-8 order-2 sm:order-1 w-full sm:w-auto justify-center sm:justify-start">
-                    <button onclick="switchTab('calculator')" id="tab-btn-calculator" class="tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors">
-                        <i class="fas fa-calculator"></i> Calculator
-                    </button>
-                    <button onclick="switchTab('report')" id="tab-btn-report" class="tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors">
-                        <i class="fas fa-chart-pie"></i> Report Card
-                    </button>
-                </div>
-
-                <!-- Data Tools -->
-                <div class="flex items-center gap-3 order-1 sm:order-2 w-full sm:w-auto justify-center sm:justify-end">
-                    <!-- Hidden File Input -->
-                    <input type="file" id="csvInput" accept=".csv" class="hidden" onchange="handleFileSelect(event)">
-                    
-                    <button onclick="document.getElementById('csvInput').click()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded border border-slate-300 transition-colors font-medium">
-                        <i class="fas fa-file-import mr-1"></i> Import CSV
-                    </button>
-                    
-                    <button onclick="downloadCSV()" class="text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded border border-indigo-200 transition-colors font-medium">
-                        <i class="fas fa-file-export mr-1"></i> Export CSV
-                    </button>
-
-                    <div class="h-4 w-px bg-slate-300 mx-1"></div>
-
-                    <button onclick="clearData()" class="text-xs text-red-500 hover:text-red-700 font-medium" title="Reset All">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="max-w-5xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-        
-        <!-- CALCULATOR TAB -->
-        <div id="view-calculator" class="space-y-6">
-            
-            <!-- Header -->
-            <div class="text-center mb-8">
-                <h1 class="text-3xl font-bold text-slate-900">Universal GPA Calculator</h1>
-                <p class="mt-2 text-slate-600">Calculate, Convert, and Save your Grades</p>
-            </div>
-
-            <!-- CONFIGURATION PANEL -->
-            <div class="bg-white shadow-sm rounded-xl border border-slate-200 p-6">
-                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4">Configuration</h3>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    
-                    <!-- Previous History Section -->
-                    <div>
-                        <label class="flex items-center cursor-pointer mb-4">
-                            <div class="relative">
-                                <input type="checkbox" id="toggle-prev" class="sr-only peer" onchange="toggleSection('prev')">
-                                <div class="block bg-slate-200 w-11 h-6 rounded-full transition-colors peer-checked:bg-indigo-600"></div>
-                                <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform peer-checked:translate-x-5"></div>
-                            </div>
-                            <div class="ml-3 text-slate-700 font-medium text-sm">Include Previous History</div>
-                        </label>
-
-                        <div id="prev-inputs" class="hidden pl-2 border-l-2 border-indigo-100 space-y-3">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Total Credits Earned</label>
-                                    <input type="number" id="prev-credits" class="w-full border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g. 89" oninput="saveAndCalc()">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Current CGPA (10 Scale)</label>
-                                    <input type="number" id="prev-cgpa" step="0.01" class="w-full border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g. 8.61" oninput="saveAndCalc()">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Future Prediction Section -->
-                    <div>
-                        <label class="flex items-center cursor-pointer mb-4">
-                            <div class="relative">
-                                <input type="checkbox" id="toggle-next" class="sr-only peer" onchange="toggleSection('next')">
-                                <div class="block bg-slate-200 w-11 h-6 rounded-full transition-colors peer-checked:bg-indigo-600"></div>
-                                <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform peer-checked:translate-x-5"></div>
-                            </div>
-                            <div class="ml-3 text-slate-700 font-medium text-sm">Predict Next Semester</div>
-                        </label>
-
-                        <div id="next-inputs" class="hidden pl-2 border-l-2 border-indigo-100 space-y-3">
-                            <div class="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Next Sem Credits</label>
-                                    <input type="number" id="next-credits" class="w-full border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" value="24" oninput="saveAndCalc()">
-                                </div>
-                                <div>
-                                    <label class="block text-xs text-slate-500 mb-1">Target GPA</label>
-                                    <input type="number" id="next-gpa" step="0.1" class="w-full border-slate-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500" value="9.0" oninput="saveAndCalc()">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- CURRENT SEMESTER CARD -->
-            <div class="bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-200">
-                
-                <!-- Table Header -->
-                <div class="bg-slate-50 px-4 py-3 border-b border-slate-200 grid grid-cols-12 gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <div class="col-span-6 md:col-span-6">Subject Name</div>
-                    <div class="col-span-2 md:col-span-2 text-center">Credits</div>
-                    <div class="col-span-3 md:col-span-3">Grade</div>
-                    <div class="col-span-1 md:col-span-1"></div>
-                </div>
-
-                <!-- Dynamic Subject List -->
-                <div id="subjects-list" class="divide-y divide-slate-100">
-                    <!-- Rows injected by JS -->
-                </div>
-
-                <!-- Add Button -->
-                <div class="p-4 bg-slate-50 border-t border-slate-200">
-                    <button onclick="addNewSubject()" class="w-full py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 hover:border-indigo-500 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 font-medium text-sm">
-                        <i class="fas fa-plus"></i> Add Subject
-                    </button>
-                </div>
-
-                <!-- Result Footer -->
-                <div class="bg-slate-900 text-white p-6 sm:p-8">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        
-                        <!-- 10 Point Scale -->
-                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden group">
-                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10">10-Point Scale</span>
-                            <div class="flex items-baseline gap-1 z-10">
-                                <span id="res-10" class="text-4xl font-bold text-indigo-400 transition-all group-hover:scale-110">0.00</span>
-                                <span class="text-slate-500 text-sm">/ 10</span>
-                            </div>
-                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">10</div>
-                        </div>
-
-                        <!-- US Scale -->
-                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden group">
-                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10 flex items-center gap-2">
-                                <img src="https://flagcdn.com/us.svg" class="w-4 h-3 rounded-sm opacity-80" alt="USA"> US 4.0 Scale
-                            </span>
-                            <div class="flex items-baseline gap-1 z-10">
-                                <span id="res-4" class="text-4xl font-bold text-emerald-400 transition-all group-hover:scale-110">0.00</span>
-                                <span class="text-slate-500 text-sm">/ 4.0</span>
-                            </div>
-                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">US</div>
-                        </div>
-
-                        <!-- German Scale -->
-                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden group">
-                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10 flex items-center gap-2">
-                                <div class="w-4 h-3 rounded-sm opacity-80 german-flag"></div> German Scale
-                            </span>
-                            <div class="flex items-baseline gap-1 z-10">
-                                <span id="res-de" class="text-4xl font-bold text-yellow-400 transition-all group-hover:scale-110">0.00</span>
-                                <span class="text-slate-500 text-sm"></span>
-                            </div>
-                            <div class="text-[10px] text-slate-500 mt-1 z-10">Modified Bavarian</div>
-                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">DE</div>
-                        </div>
-
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- REPORT TAB -->
-        <div id="view-report" class="hidden">
-            <div class="bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-200">
-                <div class="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-                    <div>
-                        <h2 class="text-xl font-bold text-slate-900">Academic Report Card</h2>
-                        <p class="text-sm text-slate-500">Generated on <span id="report-date"></span></p>
-                    </div>
-                    <button onclick="window.print()" class="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm">
-                        <i class="fas fa-print"></i> Print
-                    </button>
-                </div>
-                
-                <div class="overflow-x-auto">
-                    <table class="min-w-full divide-y divide-slate-200">
-                        <thead class="bg-slate-50">
-                            <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Component</th>
-                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Credits</th>
-                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-indigo-600 uppercase tracking-wider bg-indigo-50/50">10-Point</th>
-                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-emerald-600 uppercase tracking-wider bg-emerald-50/50">US 4.0</th>
-                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-amber-600 uppercase tracking-wider bg-amber-50/50">German</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white divide-y divide-slate-200" id="report-table-body">
-                            <!-- JS populated -->
-                        </tbody>
-                        <tfoot class="bg-slate-50 font-semibold text-slate-900">
-                            <tr class="border-t-2 border-slate-200">
-                                <td class="px-6 py-4">Cumulative GPA</td>
-                                <td class="px-6 py-4 text-center" id="report-total-credits">0</td>
-                                <td class="px-6 py-4 text-center text-indigo-700 bg-indigo-50/50" id="report-total-10">0.00</td>
-                                <td class="px-6 py-4 text-center text-emerald-700 bg-emerald-50/50" id="report-total-4">0.00</td>
-                                <td class="px-6 py-4 text-center text-amber-700 bg-amber-50/50" id="report-total-de">0.00</td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-                
-                <div class="p-6 bg-slate-50 text-xs text-slate-500 grid md:grid-cols-2 gap-4">
-                    <div>
-                        <p class="font-semibold text-slate-700 mb-2">Grading Scales:</p>
-                        <ul class="list-disc pl-4 space-y-1">
-                            <li><strong>10-Point:</strong> Standard Academic Scale</li>
-                            <li><strong>US 4.0:</strong> S/A=4.0, B=3.5, C=3.0, D=2.5, E=2.0</li>
-                            <li><strong>German:</strong> 1 + 3 × (10 - GPA) / (10 - 5)</li>
-                        </ul>
-                    </div>
-                    <div class="text-right flex flex-col justify-end">
-                        <p>Keep this report for your records.</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    </div>
-
+    
     <script>
-        // --- 1. State Management ---
-        let subjects = [];
-        let config = {
+        // Tailwind Configuration for custom colors
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#1e293b', 
+                        },
+                        primary: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        }
+                    },
+                    boxShadow: {
+                        'subtle': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02)',
+                        'floating': '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025)',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- CONSTANTS & CONFIG ---
+        const GRADE_POINTS = {
+            'S': { val10: 10, val4: 4.0, label: 'S (10)' },
+            'A': { val10: 9, val4: 4.0, label: 'A (9)' },
+            'B': { val10: 8, val4: 3.5, label: 'B (8)' },
+            'C': { val10: 7, val4: 3.0, label: 'C (7)' },
+            'D': { val10: 6, val4: 2.5, label: 'D (6)' },
+            'E': { val10: 5, val4: 2.0, label: 'E (5)' },
+            'F': { val10: 0, val4: 0.0, label: 'F (0)' }
+        };
+
+        const INITIAL_SUBJECTS = [
+            { id: 1, name: 'Machine Learning', credits: 4, grade: '' },
+            { id: 2, name: 'Database Systems', credits: 3, grade: '' },
+            { id: 3, name: 'Operating Systems', credits: 3, grade: '' },
+            { id: 4, name: 'Artificial Intelligence', credits: 3, grade: '' }
+        ];
+
+        const INITIAL_CONFIG = {
             includePrev: false,
             prevCredits: 0,
             prevCGPA: 0,
@@ -289,422 +132,516 @@
             nextTarget: 9.0
         };
 
-        // Grade Mapping
-        const gradePoints = {
-            'S': { val10: 10, val4: 4.0 },
-            'A': { val10: 9, val4: 4.0 },
-            'B': { val10: 8, val4: 3.5 },
-            'C': { val10: 7, val4: 3.0 },
-            'D': { val10: 6, val4: 2.5 },
-            'E': { val10: 5, val4: 2.0 },
-            'F': { val10: 0, val4: 0.0 }
-        };
-
-        // --- 2. Initialization ---
-        window.onload = function() {
-            loadFromStorage();
-            document.getElementById('report-date').textContent = new Date().toLocaleDateString();
-        };
-
-        function loadFromStorage() {
-            const savedData = localStorage.getItem('gpaData');
-            if (savedData) {
-                const data = JSON.parse(savedData);
-                subjects = data.subjects || [];
-                config = data.config || config;
-            } else {
-                // Default starting rows if empty
-                subjects = [
-                    { id: Date.now(), name: 'Subject 1', credits: 4, grade: '' },
-                    { id: Date.now() + 1, name: 'Subject 2', credits: 3, grade: '' },
-                    { id: Date.now() + 2, name: 'Subject 3', credits: 3, grade: '' }
-                ];
-            }
-            syncUI();
-            calculate();
-        }
-
-        function saveAndCalc() {
-            // Update config from inputs
-            config.prevCredits = parseFloat(document.getElementById('prev-credits').value) || 0;
-            config.prevCGPA = parseFloat(document.getElementById('prev-cgpa').value) || 0;
-            config.nextCredits = parseFloat(document.getElementById('next-credits').value) || 0;
-            config.nextTarget = parseFloat(document.getElementById('next-gpa').value) || 0;
-            
-            // Update config from toggles
-            config.includePrev = document.getElementById('toggle-prev').checked;
-            config.includeNext = document.getElementById('toggle-next').checked;
-
-            saveToStorage();
-            calculate();
-        }
-
-        function saveToStorage() {
-            const data = { subjects, config };
-            localStorage.setItem('gpaData', JSON.stringify(data));
-        }
-
-        function clearData() {
-            if(confirm("Clear all data and reset?")) {
-                localStorage.removeItem('gpaData');
-                location.reload();
-            }
-        }
-
-        // --- 3. CSV IMPORT/EXPORT LOGIC ---
-        function downloadCSV() {
-            let csvContent = "data:text/csv;charset=utf-8,";
-            
-            // Header
-            csvContent += "Row Type,Name / Description,Value / Credits,Grade\n";
-            
-            // Config Rows
-            csvContent += `CONFIG,Include Previous History,${config.includePrev},\n`;
-            csvContent += `CONFIG,Previous Credits,${config.prevCredits},\n`;
-            csvContent += `CONFIG,Previous CGPA,${config.prevCGPA},\n`;
-            csvContent += `CONFIG,Include Next Sem,${config.includeNext},\n`;
-            csvContent += `CONFIG,Next Sem Credits,${config.nextCredits},\n`;
-            csvContent += `CONFIG,Next Target GPA,${config.nextTarget},\n`;
-            
-            // Subject Rows
-            subjects.forEach(sub => {
-                // Escape commas in names if any
-                const safeName = sub.name.includes(',') ? `"${sub.name}"` : sub.name;
-                csvContent += `SUBJECT,${safeName},${sub.credits},${sub.grade}\n`;
-            });
-
-            // Create Download Link
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "my_grades_template.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        }
-
-        function handleFileSelect(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const text = e.target.result;
-                parseCSV(text);
-            };
-            reader.readAsText(file);
-            // Reset input so same file can be selected again if needed
-            event.target.value = '';
-        }
-
-        function parseCSV(csvText) {
-            const lines = csvText.split('\n');
-            const newSubjects = [];
-            
-            // Reset config temp (will populate from file)
-            const newConfig = { ...config }; 
-
-            lines.forEach((line, index) => {
-                if (index === 0) return; // Skip header
-                if (!line.trim()) return; // Skip empty lines
-
-                // Simple CSV parser handling quotes
-                // This regex splits by comma but ignores commas inside quotes
-                const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
-                // Fallback simple split if regex fails or simple structure
-                const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, '')); // Remove quotes
-                
-                if (cols.length < 3) return;
-
-                const type = cols[0].toUpperCase();
-                const name = cols[1];
-                const val1 = cols[2]; // Credits or Config Value
-                const val2 = cols[3] || ''; // Grade
-
-                if (type === 'CONFIG') {
-                    if (name === 'Include Previous History') newConfig.includePrev = (val1 === 'true');
-                    if (name === 'Previous Credits') newConfig.prevCredits = parseFloat(val1) || 0;
-                    if (name === 'Previous CGPA') newConfig.prevCGPA = parseFloat(val1) || 0;
-                    if (name === 'Include Next Sem') newConfig.includeNext = (val1 === 'true');
-                    if (name === 'Next Sem Credits') newConfig.nextCredits = parseFloat(val1) || 24;
-                    if (name === 'Next Target GPA') newConfig.nextTarget = parseFloat(val1) || 9.0;
-                } 
-                else if (type === 'SUBJECT') {
-                    newSubjects.push({
-                        id: Date.now() + Math.random(),
-                        name: name,
-                        credits: parseFloat(val1) || 0,
-                        grade: val2
-                    });
-                }
-            });
-
-            // Update State
-            subjects = newSubjects;
-            config = newConfig;
-            
-            saveToStorage();
-            syncUI();
-            calculate();
-            alert('Data imported successfully!');
-        }
-
-
-        // --- 4. UI Synchronization ---
-        function syncUI() {
-            // Sync Configuration Inputs
-            document.getElementById('toggle-prev').checked = config.includePrev;
-            document.getElementById('prev-credits').value = config.prevCredits || '';
-            document.getElementById('prev-cgpa').value = config.prevCGPA || '';
-            toggleSection('prev', false); // Set visibility without saving
-
-            document.getElementById('toggle-next').checked = config.includeNext;
-            document.getElementById('next-credits').value = config.nextCredits || 24;
-            document.getElementById('next-gpa').value = config.nextTarget || 9.0;
-            toggleSection('next', false);
-
-            renderSubjects();
-        }
-
-        function toggleSection(section, shouldSave = true) {
-            const checkbox = document.getElementById(`toggle-${section}`);
-            const container = document.getElementById(`${section}-inputs`);
-            
-            if (checkbox.checked) {
-                container.classList.remove('hidden');
-            } else {
-                container.classList.add('hidden');
-            }
-            
-            if (shouldSave) saveAndCalc();
-        }
-
-        // --- 5. Subject List Management ---
-        function renderSubjects() {
-            const container = document.getElementById('subjects-list');
-            container.innerHTML = '';
-
-            subjects.forEach((sub, index) => {
-                const row = document.createElement('div');
-                row.className = 'px-4 py-3 grid grid-cols-12 gap-2 items-center hover:bg-slate-50 transition-colors group';
-                row.innerHTML = `
-                    <!-- Name Input -->
-                    <div class="col-span-6 md:col-span-6">
-                        <input type="text" 
-                            value="${sub.name}" 
-                            oninput="updateSubject(${index}, 'name', this.value)"
-                            class="w-full border-none bg-transparent p-0 text-sm font-medium text-slate-700 placeholder-slate-400 focus:ring-0" 
-                            placeholder="Subject Name">
-                    </div>
-
-                    <!-- Credits Input -->
-                    <div class="col-span-2 md:col-span-2">
-                        <input type="number" 
-                            value="${sub.credits}" 
-                            oninput="updateSubject(${index}, 'credits', this.value)"
-                            class="w-full text-center border border-slate-200 rounded py-1 text-sm text-slate-600 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
-                            min="0">
-                    </div>
-
-                    <!-- Grade Select -->
-                    <div class="col-span-3 md:col-span-3">
-                        <select 
-                            onchange="updateSubject(${index}, 'grade', this.value)"
-                            class="grade-select w-full pl-2 pr-6 py-1 text-sm border-slate-200 rounded focus:border-indigo-500 focus:ring-indigo-500 text-slate-700 bg-white">
-                            <option value="" ${sub.grade === '' ? 'selected' : ''}>-</option>
-                            <option value="S" ${sub.grade === 'S' ? 'selected' : ''}>S (10)</option>
-                            <option value="A" ${sub.grade === 'A' ? 'selected' : ''}>A (9)</option>
-                            <option value="B" ${sub.grade === 'B' ? 'selected' : ''}>B (8)</option>
-                            <option value="C" ${sub.grade === 'C' ? 'selected' : ''}>C (7)</option>
-                            <option value="D" ${sub.grade === 'D' ? 'selected' : ''}>D (6)</option>
-                            <option value="E" ${sub.grade === 'E' ? 'selected' : ''}>E (5)</option>
-                        </select>
-                    </div>
-
-                    <!-- Delete Button -->
-                    <div class="col-span-1 md:col-span-1 text-right">
-                        <button onclick="removeSubject(${index})" class="text-slate-300 hover:text-red-500 transition-colors p-1">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                `;
-                container.appendChild(row);
-            });
-        }
-
-        function addNewSubject() {
-            subjects.push({ id: Date.now(), name: '', credits: 3, grade: '' });
-            renderSubjects();
-            // Focus on the new subject name
-            setTimeout(() => {
-                const inputs = document.querySelectorAll('#subjects-list input[type="text"]');
-                if(inputs.length) inputs[inputs.length - 1].focus();
-            }, 50);
-            saveToStorage();
-        }
-
-        function updateSubject(index, field, value) {
-            if (field === 'credits') value = parseFloat(value) || 0;
-            subjects[index][field] = value;
-            saveToStorage(); // Calculates automatically inside render? No, need explicit calc
-            calculate();
-        }
-
-        function removeSubject(index) {
-            subjects.splice(index, 1);
-            renderSubjects();
-            saveToStorage();
-            calculate();
-        }
-
-        // --- 6. Calculations ---
-        function calculate() {
-            // A. Calculate Current Semester
-            let currCredits = 0;
-            let currPts10 = 0;
-            let currPts4 = 0;
-
-            subjects.forEach(sub => {
-                if (sub.grade && gradePoints[sub.grade]) {
-                    const cr = sub.credits;
-                    currCredits += cr;
-                    currPts10 += gradePoints[sub.grade].val10 * cr;
-                    currPts4 += gradePoints[sub.grade].val4 * cr;
-                }
-            });
-
-            const currGPA10 = currCredits > 0 ? (currPts10 / currCredits) : 0;
-            const currGPA4 = currCredits > 0 ? (currPts4 / currCredits) : 0;
-            const currGerman = convertToGerman(currGPA10);
-
-            // B. Previous Semester
-            // We approximate points based on the user's inputted CGPA
-            const prevCredits = config.includePrev ? config.prevCredits : 0;
-            const prevGPA10 = config.includePrev ? config.prevCGPA : 0;
-            const prevPts10 = prevCredits * prevGPA10;
-            // Interpolate US GPA for previous history
-            const prevGPA4 = interpolateUS(prevGPA10);
-            const prevPts4 = prevCredits * prevGPA4;
-            const prevGerman = convertToGerman(prevGPA10);
-
-            // C. Next Semester
-            const nextCredits = config.includeNext ? config.nextCredits : 0;
-            const nextGPA10 = config.includeNext ? config.nextTarget : 0;
-            const nextPts10 = nextCredits * nextGPA10;
-            const nextGPA4 = interpolateUS(nextGPA10);
-            const nextPts4 = nextCredits * nextGPA4;
-            const nextGerman = convertToGerman(nextGPA10);
-
-            // D. Totals
-            const totalCredits = currCredits + prevCredits + nextCredits;
-            const totalPts10 = currPts10 + prevPts10 + nextPts10;
-            const totalPts4 = currPts4 + prevPts4 + nextPts4;
-
-            const finalGPA10 = totalCredits > 0 ? (totalPts10 / totalCredits) : 0;
-            const finalGPA4 = totalCredits > 0 ? (totalPts4 / totalCredits) : 0;
-            const finalGerman = convertToGerman(finalGPA10);
-
-            // Update Display
-            updateDisplay(finalGPA10, finalGPA4, finalGerman);
-            
-            // Update Report Data
-            updateReport({
-                prev: { active: config.includePrev, credits: prevCredits, gpa10: prevGPA10, gpa4: prevGPA4, german: prevGerman },
-                curr: { active: true, credits: currCredits, gpa10: currGPA10, gpa4: currGPA4, german: currGerman },
-                next: { active: config.includeNext, credits: nextCredits, gpa10: nextGPA10, gpa4: nextGPA4, german: nextGerman },
-                total: { credits: totalCredits, gpa10: finalGPA10, gpa4: finalGPA4, german: finalGerman }
-            });
-        }
-
-        function updateDisplay(gpa10, gpa4, german) {
-            document.getElementById("res-10").textContent = gpa10.toFixed(2);
-            document.getElementById("res-4").textContent = gpa4.toFixed(2);
-            document.getElementById("res-de").textContent = german.toFixed(2);
-            
-            const deEl = document.getElementById('res-de');
-            // German scale coloring (Lower is better)
-            if (german <= 1.5) deEl.className = "text-4xl font-bold text-emerald-500 transition-all group-hover:scale-110";
-            else if (german <= 2.5) deEl.className = "text-4xl font-bold text-indigo-500 transition-all group-hover:scale-110";
-            else if (german <= 3.5) deEl.className = "text-4xl font-bold text-yellow-500 transition-all group-hover:scale-110";
-            else deEl.className = "text-4xl font-bold text-red-500 transition-all group-hover:scale-110";
-        }
-
-        // --- 7. Helpers ---
-        function convertToGerman(gpa10) {
+        // --- HELPER FUNCTIONS ---
+        const convertToGerman = (gpa10) => {
             if (gpa10 === 0) return 0;
             if (gpa10 < 5) return 5.0;
             if (gpa10 > 10) return 1.0;
             const result = 1 + 3 * ((10 - gpa10) / (10 - 5));
             return parseFloat(result.toFixed(2));
-        }
+        };
 
-        function interpolateUS(gpa10) {
+        const interpolateUS = (gpa10) => {
             if (gpa10 >= 9) return 4.0;
             if (gpa10 >= 8) return 3.5 + ((gpa10 - 8) / 1) * 0.5;
             if (gpa10 >= 7) return 3.0 + ((gpa10 - 7) / 1) * 0.5;
             if (gpa10 >= 6) return 2.5 + ((gpa10 - 6) / 1) * 0.5;
             if (gpa10 >= 5) return 2.0 + ((gpa10 - 5) / 1) * 0.5;
             return 0.0;
-        }
+        };
 
-        function updateReport(data) {
-            const tbody = document.getElementById('report-table-body');
-            let rows = '';
+        // --- COMPONENTS ---
 
-            if (data.prev.active) {
-                rows += `<tr>
-                    <td class="px-6 py-4 text-sm font-medium text-slate-900">Previous History</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-500">${data.prev.credits}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-700 font-mono">${data.prev.gpa10.toFixed(2)}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-700 font-mono">${data.prev.gpa4.toFixed(2)}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-700 font-mono">${data.prev.german.toFixed(2)}</td>
-                </tr>`;
-            }
+        // 1. Metric Card Component
+        const MetricCard = ({ label, value, subValue, colorClass, icon }) => (
+            <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-subtle flex items-start justify-between transition-all hover:shadow-card group">
+                <div>
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+                    <div className="flex items-baseline gap-2">
+                        <span className={`text-3xl font-bold font-mono tracking-tight ${colorClass}`}>{value}</span>
+                        {subValue && <span className="text-slate-400 text-sm font-medium">{subValue}</span>}
+                    </div>
+                </div>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${colorClass.replace('text-', 'bg-').replace('600', '50').replace('700', '50')} ${colorClass}`}>
+                    <i className={`ph-fill ${icon}`}></i>
+                </div>
+            </div>
+        );
 
-            rows += `<tr class="bg-indigo-50/30">
-                <td class="px-6 py-4 text-sm font-medium text-indigo-900">Current Semester</td>
-                <td class="px-6 py-4 text-center text-sm text-slate-500">${data.curr.credits}</td>
-                <td class="px-6 py-4 text-center text-sm text-indigo-700 font-bold font-mono">${data.curr.gpa10.toFixed(2)}</td>
-                <td class="px-6 py-4 text-center text-sm text-emerald-700 font-bold font-mono">${data.curr.gpa4.toFixed(2)}</td>
-                <td class="px-6 py-4 text-center text-sm text-amber-700 font-bold font-mono">${data.curr.german.toFixed(2)}</td>
-            </tr>`;
+        // 2. Toggle Switch
+        const Toggle = ({ label, checked, onChange }) => (
+            <div className="flex items-center justify-between py-2">
+                <span className="text-sm font-medium text-slate-700">{label}</span>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-800"></div>
+                </label>
+            </div>
+        );
 
-            if (data.next.active) {
-                rows += `<tr class="bg-slate-50 border-l-4 border-dashed border-l-slate-300">
-                    <td class="px-6 py-4 text-sm font-medium text-slate-500 italic">Projected Next Sem</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-400">${data.next.credits}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-500 font-mono">${data.next.gpa10.toFixed(2)}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-500 font-mono">${data.next.gpa4.toFixed(2)}</td>
-                    <td class="px-6 py-4 text-center text-sm text-slate-500 font-mono">${data.next.german.toFixed(2)}</td>
-                </tr>`;
-            }
+        // 3. Subject Row
+        const SubjectRow = ({ subject, onUpdate, onDelete }) => (
+            <div className="group flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-subtle hover:border-primary-500/50 transition-colors animate-fade-in">
+                <div className="flex-grow">
+                    <input 
+                        type="text" 
+                        value={subject.name}
+                        onChange={(e) => onUpdate(subject.id, 'name', e.target.value)}
+                        placeholder="Subject Name"
+                        className="w-full text-sm font-medium text-slate-800 placeholder-slate-400 bg-transparent border-none focus:ring-0 p-0"
+                    />
+                </div>
+                
+                <div className="w-20 border-l border-slate-100 pl-3">
+                    <input 
+                        type="number" 
+                        value={subject.credits}
+                        onChange={(e) => onUpdate(subject.id, 'credits', parseFloat(e.target.value) || 0)}
+                        className="w-full text-sm text-right font-mono bg-slate-50 rounded px-2 py-1 border-none focus:ring-2 focus:ring-primary-100"
+                        min="0"
+                    />
+                </div>
 
-            tbody.innerHTML = rows;
-            
-            document.getElementById('report-total-credits').textContent = data.total.credits;
-            document.getElementById('report-total-10').textContent = data.total.gpa10.toFixed(2);
-            document.getElementById('report-total-4').textContent = data.total.gpa4.toFixed(2);
-            document.getElementById('report-total-de').textContent = data.total.german.toFixed(2);
-        }
+                <div className="w-28">
+                    <select 
+                        value={subject.grade}
+                        onChange={(e) => onUpdate(subject.id, 'grade', e.target.value)}
+                        className="w-full text-sm bg-slate-50 border-none rounded px-2 py-1.5 font-medium text-slate-700 focus:ring-2 focus:ring-primary-100 cursor-pointer"
+                    >
+                        <option value="">- Grade -</option>
+                        {Object.entries(GRADE_POINTS).map(([key, data]) => (
+                            <option key={key} value={key}>{data.label}</option>
+                        ))}
+                    </select>
+                </div>
 
-        function switchTab(tabName) {
-            const calcBtn = document.getElementById('tab-btn-calculator');
-            const repBtn = document.getElementById('tab-btn-report');
-            const calcView = document.getElementById('view-calculator');
-            const repView = document.getElementById('view-report');
+                <button 
+                    onClick={() => onDelete(subject.id)}
+                    className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                >
+                    <i className="ph ph-trash"></i>
+                </button>
+            </div>
+        );
 
-            if(tabName === 'calculator') {
-                calcBtn.className = "tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors";
-                repBtn.className = "tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors";
-                calcView.classList.remove('hidden');
-                repView.classList.add('hidden');
-            } else {
-                repBtn.className = "tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors";
-                calcBtn.className = "tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors";
-                repView.classList.remove('hidden');
-                calcView.classList.add('hidden');
-            }
-        }
+        // --- MAIN APP COMPONENT ---
+        const App = () => {
+            const [view, setView] = useState('dashboard'); // 'dashboard' | 'report'
+            const [subjects, setSubjects] = useState(INITIAL_SUBJECTS);
+            const [config, setConfig] = useState(INITIAL_CONFIG);
+            const [isLoaded, setIsLoaded] = useState(false);
+
+            // Load Data
+            useEffect(() => {
+                const saved = localStorage.getItem('gpaData_v2');
+                if (saved) {
+                    const parsed = JSON.parse(saved);
+                    setSubjects(parsed.subjects || INITIAL_SUBJECTS);
+                    setConfig(parsed.config || INITIAL_CONFIG);
+                }
+                setIsLoaded(true);
+            }, []);
+
+            // Save Data
+            useEffect(() => {
+                if (isLoaded) {
+                    localStorage.setItem('gpaData_v2', JSON.stringify({ subjects, config }));
+                }
+            }, [subjects, config, isLoaded]);
+
+            // Logic
+            const results = useMemo(() => {
+                let currCredits = 0, currPts10 = 0, currPts4 = 0;
+                
+                subjects.forEach(sub => {
+                    if (sub.grade && GRADE_POINTS[sub.grade]) {
+                        currCredits += sub.credits;
+                        currPts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
+                        currPts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
+                    }
+                });
+
+                const prevCredits = config.includePrev ? config.prevCredits : 0;
+                const prevGPA10 = config.includePrev ? config.prevCGPA : 0;
+                const prevPts10 = prevCredits * prevGPA10;
+                const prevGPA4 = interpolateUS(prevGPA10);
+                const prevPts4 = prevCredits * prevGPA4;
+
+                const nextCredits = config.includeNext ? config.nextCredits : 0;
+                const nextGPA10 = config.includeNext ? config.nextTarget : 0;
+                const nextPts10 = nextCredits * nextGPA10;
+                const nextGPA4 = interpolateUS(nextGPA10);
+                const nextPts4 = nextCredits * nextGPA4;
+
+                const totalCredits = currCredits + prevCredits + nextCredits;
+                const totalPts10 = currPts10 + prevPts10 + nextPts10;
+                const totalPts4 = currPts4 + prevPts4 + nextPts4;
+
+                const finalGPA10 = totalCredits > 0 ? (totalPts10 / totalCredits) : 0;
+                const finalGPA4 = totalCredits > 0 ? (totalPts4 / totalCredits) : 0;
+                const finalGerman = convertToGerman(finalGPA10);
+
+                return {
+                    curr: { credits: currCredits, gpa10: currCredits > 0 ? currPts10/currCredits : 0 },
+                    total: { 
+                        credits: totalCredits, 
+                        gpa10: finalGPA10, 
+                        gpa4: finalGPA4, 
+                        german: finalGerman 
+                    }
+                };
+            }, [subjects, config]);
+
+            // Actions
+            const updateSubject = (id, field, val) => {
+                setSubjects(prev => prev.map(s => s.id === id ? { ...s, [field]: val } : s));
+            };
+
+            const addSubject = () => {
+                setSubjects(prev => [...prev, { id: Date.now(), name: '', credits: 3, grade: '' }]);
+            };
+
+            const removeSubject = (id) => {
+                setSubjects(prev => prev.filter(s => s.id !== id));
+            };
+
+            const resetData = () => {
+                if(confirm("Reset all data?")) {
+                    setSubjects(INITIAL_SUBJECTS);
+                    setConfig(INITIAL_CONFIG);
+                }
+            };
+
+            const handleImport = (e) => {
+                const file = e.target.files[0];
+                if(!file) return;
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    // Simple CSV Parser logic from previous iteration, adapted
+                    const text = evt.target.result;
+                    const lines = text.split('\n');
+                    const newSubjects = [];
+                    const newConfig = { ...config };
+                    lines.forEach((line, idx) => {
+                        if(idx === 0 || !line.trim()) return;
+                        const cols = line.split(',').map(c => c.trim());
+                        if(cols[0] === 'CONFIG') {
+                            if(cols[1] === 'prevCredits') newConfig.prevCredits = parseFloat(cols[2]);
+                            if(cols[1] === 'prevCGPA') newConfig.prevCGPA = parseFloat(cols[2]);
+                            // ... add others as needed
+                        } else if (cols[0] === 'SUBJECT') {
+                            newSubjects.push({ id: Date.now() + Math.random(), name: cols[1], credits: parseFloat(cols[2]), grade: cols[3] });
+                        }
+                    });
+                    if(newSubjects.length > 0) setSubjects(newSubjects);
+                    setConfig(newConfig);
+                    alert("Data imported!");
+                };
+                reader.readAsText(file);
+            };
+
+            const handleExport = () => {
+                let csv = "Type,Name,Value,Grade\n";
+                csv += `CONFIG,prevCredits,${config.prevCredits},\n`;
+                csv += `CONFIG,prevCGPA,${config.prevCGPA},\n`;
+                subjects.forEach(s => {
+                    csv += `SUBJECT,${s.name},${s.credits},${s.grade}\n`;
+                });
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'academic_data.csv';
+                a.click();
+            };
+
+            // --- RENDER ---
+            return (
+                <div className="min-h-screen flex flex-col max-w-6xl mx-auto px-4 sm:px-6 py-6">
+                    
+                    {/* Header / Nav */}
+                    <header className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-slate-800 text-white rounded-lg flex items-center justify-center shadow-lg">
+                                <i className="ph-bold ph-student text-xl"></i>
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-slate-900 text-lg leading-tight">Academic Dashboard</h1>
+                                <p className="text-xs text-slate-500 font-medium">Fall 2025 Semester</p>
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                            <button 
+                                onClick={() => setView('dashboard')}
+                                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Calculator
+                            </button>
+                            <button 
+                                onClick={() => setView('report')}
+                                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'report' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                            >
+                                Report
+                            </button>
+                        </div>
+                    </header>
+
+                    {view === 'dashboard' ? (
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
+                            
+                            {/* Left Column: Inputs */}
+                            <div className="lg:col-span-7 space-y-6">
+                                
+                                {/* Subject List Card */}
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                        <h2 className="font-semibold text-slate-800 text-sm">Current Courses</h2>
+                                        <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
+                                            {subjects.reduce((acc, s) => acc + s.credits, 0)} Credits
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="p-6 space-y-3">
+                                        <div className="flex px-3 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                                            <div className="flex-grow">Subject</div>
+                                            <div className="w-20 pl-3">Credits</div>
+                                            <div className="w-28">Grade</div>
+                                            <div className="w-8"></div>
+                                        </div>
+                                        
+                                        {subjects.map(subject => (
+                                            <SubjectRow 
+                                                key={subject.id} 
+                                                subject={subject} 
+                                                onUpdate={updateSubject} 
+                                                onDelete={removeSubject} 
+                                            />
+                                        ))}
+
+                                        <button 
+                                            onClick={addSubject}
+                                            className="w-full py-3 border border-dashed border-slate-300 rounded-lg text-slate-500 text-sm font-medium hover:border-primary-500 hover:text-primary-600 hover:bg-primary-50 transition-all flex items-center justify-center gap-2 mt-4"
+                                        >
+                                            <i className="ph-bold ph-plus"></i> Add Course
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Configuration Card */}
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+                                    <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50">
+                                        <h2 className="font-semibold text-slate-800 text-sm">Advanced Configuration</h2>
+                                    </div>
+                                    <div className="p-6 grid md:grid-cols-2 gap-8">
+                                        
+                                        {/* History Config */}
+                                        <div>
+                                            <Toggle 
+                                                label="Include History" 
+                                                checked={config.includePrev} 
+                                                onChange={(v) => setConfig(prev => ({...prev, includePrev: v}))} 
+                                            />
+                                            {config.includePrev && (
+                                                <div className="mt-3 space-y-3 pl-4 border-l-2 border-slate-100 animate-fade-in">
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Past Credits</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.prevCredits} 
+                                                            onChange={(e) => setConfig({...config, prevCredits: parseFloat(e.target.value) || 0})}
+                                                            className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Past CGPA</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.prevCGPA} 
+                                                            onChange={(e) => setConfig({...config, prevCGPA: parseFloat(e.target.value) || 0})}
+                                                            className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Prediction Config */}
+                                        <div>
+                                            <Toggle 
+                                                label="Predict Next Sem" 
+                                                checked={config.includeNext} 
+                                                onChange={(v) => setConfig(prev => ({...prev, includeNext: v}))} 
+                                            />
+                                            {config.includeNext && (
+                                                <div className="mt-3 space-y-3 pl-4 border-l-2 border-slate-100 animate-fade-in">
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Next Credits</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.nextCredits} 
+                                                            onChange={(e) => setConfig({...config, nextCredits: parseFloat(e.target.value) || 0})}
+                                                            className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs text-slate-500 mb-1">Target GPA</label>
+                                                        <input 
+                                                            type="number" 
+                                                            value={config.nextTarget} 
+                                                            onChange={(e) => setConfig({...config, nextTarget: parseFloat(e.target.value) || 0})}
+                                                            className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Right Column: Stats & Actions */}
+                            <div className="lg:col-span-5 space-y-6">
+                                
+                                {/* Primary Stats */}
+                                <div className="space-y-4">
+                                    <MetricCard 
+                                        label="Cumulative CGPA (10.0)" 
+                                        value={results.total.gpa10.toFixed(2)} 
+                                        subValue="/ 10" 
+                                        colorClass="text-primary-600" 
+                                        icon="ph-chart-bar" 
+                                    />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <MetricCard 
+                                            label="US Scale (4.0)" 
+                                            value={results.total.gpa4.toFixed(2)} 
+                                            colorClass="text-emerald-600" 
+                                            icon="ph-globe" 
+                                        />
+                                        <MetricCard 
+                                            label="German Scale" 
+                                            value={results.total.german.toFixed(2)} 
+                                            colorClass="text-amber-600" 
+                                            icon="ph-translate" 
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Data Management */}
+                                <div className="bg-white rounded-xl border border-slate-200 p-5 shadow-subtle">
+                                    <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Data Management</h3>
+                                    <div className="flex gap-3">
+                                        <button onClick={handleExport} className="flex-1 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center gap-2">
+                                            <i className="ph ph-download-simple"></i> Export
+                                        </button>
+                                        <label className="flex-1 py-2 px-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                                            <i className="ph ph-upload-simple"></i> Import
+                                            <input type="file" accept=".csv" className="hidden" onChange={handleImport} />
+                                        </label>
+                                        <button onClick={resetData} className="py-2 px-3 border border-red-100 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-colors">
+                                            <i className="ph ph-trash"></i>
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-3 text-center">
+                                        Data is automatically saved to local storage.
+                                    </p>
+                                </div>
+
+                                {/* Credit Summary */}
+                                <div className="bg-slate-800 text-white rounded-xl p-6 shadow-floating relative overflow-hidden">
+                                    <div className="relative z-10">
+                                        <h3 className="text-slate-400 text-xs font-semibold uppercase tracking-wider mb-2">Total Credits</h3>
+                                        <div className="text-4xl font-bold tracking-tight">{results.total.credits}</div>
+                                        <div className="mt-4 flex items-center gap-2 text-xs text-slate-400">
+                                            <span className="w-2 h-2 rounded-full bg-primary-500"></span>
+                                            Current: {results.curr.credits}
+                                            {config.includePrev && <><span className="w-2 h-2 rounded-full bg-slate-500 ml-2"></span> History: {config.prevCredits}</>}
+                                        </div>
+                                    </div>
+                                    {/* Decorative Pattern */}
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white opacity-5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl"></div>
+                                </div>
+
+                            </div>
+                        </div>
+                    ) : (
+                        // REPORT VIEW
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-card animate-fade-in overflow-hidden">
+                            <div className="p-8 border-b border-slate-100 flex justify-between items-start bg-slate-50/30">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-slate-900 mb-1">Official Academic Report</h2>
+                                    <p className="text-sm text-slate-500">Generated on {new Date().toLocaleDateString()}</p>
+                                </div>
+                                <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+                                    <i className="ph-bold ph-printer"></i> Print Report
+                                </button>
+                            </div>
+                            
+                            <div className="p-8">
+                                <div className="grid grid-cols-4 gap-8 mb-8 pb-8 border-b border-slate-100">
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Total Credits</p>
+                                        <p className="text-2xl font-bold text-slate-900 font-mono">{results.total.credits}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">CGPA (10.0)</p>
+                                        <p className="text-2xl font-bold text-primary-600 font-mono">{results.total.gpa10.toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">US GPA (4.0)</p>
+                                        <p className="text-2xl font-bold text-emerald-600 font-mono">{results.total.gpa4.toFixed(2)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs text-slate-500 uppercase font-semibold mb-1">German Note</p>
+                                        <p className="text-2xl font-bold text-amber-600 font-mono">{results.total.german.toFixed(2)}</p>
+                                    </div>
+                                </div>
+
+                                <table className="w-full text-sm text-left">
+                                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-y border-slate-200">
+                                        <tr>
+                                            <th className="px-4 py-3 font-semibold">Component</th>
+                                            <th className="px-4 py-3 font-semibold text-center">Credits</th>
+                                            <th className="px-4 py-3 font-semibold text-right">10-Point</th>
+                                            <th className="px-4 py-3 font-semibold text-right">US 4.0</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {config.includePrev && (
+                                            <tr>
+                                                <td className="px-4 py-3 font-medium text-slate-700">History / Previous Semesters</td>
+                                                <td className="px-4 py-3 text-center text-slate-600">{config.prevCredits}</td>
+                                                <td className="px-4 py-3 text-right font-mono">{config.prevCGPA.toFixed(2)}</td>
+                                                <td className="px-4 py-3 text-right font-mono">{interpolateUS(config.prevCGPA).toFixed(2)}</td>
+                                            </tr>
+                                        )}
+                                        <tr className="bg-primary-50/30">
+                                            <td className="px-4 py-3 font-medium text-primary-900">Current Semester</td>
+                                            <td className="px-4 py-3 text-center text-primary-900">{results.curr.credits}</td>
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-primary-700">{results.curr.gpa10.toFixed(2)}</td>
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-primary-700">{interpolateUS(results.curr.gpa10).toFixed(2)}</td>
+                                        </tr>
+                                        {subjects.map(s => (
+                                            <tr key={s.id} className="text-slate-500 hover:bg-slate-50">
+                                                <td className="px-4 py-2 pl-8 border-l-2 border-transparent hover:border-slate-200">↳ {s.name || 'Untitled Course'}</td>
+                                                <td className="px-4 py-2 text-center">{s.credits}</td>
+                                                <td className="px-4 py-2 text-right font-mono">{s.grade ? GRADE_POINTS[s.grade].val10 : '-'}</td>
+                                                <td className="px-4 py-2 text-right font-mono">{s.grade ? GRADE_POINTS[s.grade].val4 : '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
