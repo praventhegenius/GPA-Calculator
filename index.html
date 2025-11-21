@@ -1,70 +1,201 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Academic Performance Dashboard</title>
-    
+
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
+
     <!-- Babel for JSX -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
+
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
 
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #F8FAFC;
-            background-image: radial-gradient(#E2E8F0 1px, transparent 1px);
-            background-size: 24px 24px;
-            -webkit-font-smoothing: antialiased;
+        :root {
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
         }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
-        
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
 
-        .toggle-checkbox:checked { right: 0; border-color: #2563EB; }
-        .toggle-checkbox:checked + .toggle-label { background-color: #2563EB; }
-        
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: #f3f4f6;
+            background-image:
+                radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+                radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+                radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
+            background-attachment: fixed;
+            background-size: cover;
+            color: #1e293b;
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        /* Light Theme Override for body background to be more 'fluidic' and light as requested, 
+           but let's make it a very subtle, professional light mesh instead of dark for a "GPA calculator".
+           Actually, let's go for a super clean, premium light mode. */
+        body {
+            background-color: #FDFBF7;
+            background-image:
+                radial-gradient(at 40% 20%, hsla(28, 100%, 74%, 0.1) 0px, transparent 50%),
+                radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.1) 0px, transparent 50%),
+                radial-gradient(at 0% 50%, hsla(355, 100%, 93%, 0.1) 0px, transparent 50%);
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* Glassmorphism Utilities */
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+        }
+
+        /* Animations */
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .animate-slide-up {
+            animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.4s ease-out forwards;
+        }
+
+        /* Staggered animation delays would be handled in JS or utility classes */
+
+        /* Form Elements */
+        .input-ghost {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .input-ghost:focus {
+            outline: none;
+            border-bottom-color: #6366f1;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 6px 16px rgba(79, 70, 229, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+
+        /* Toggle Switch */
+        .toggle-checkbox:checked {
+            right: 0;
+            border-color: #4f46e5;
+        }
+
+        .toggle-checkbox:checked+.toggle-label {
+            background-color: #4f46e5;
+        }
     </style>
-    
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                    },
                     colors: {
                         slate: { 850: '#1e293b' },
-                        primary: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
-                    },
-                    boxShadow: {
-                        'subtle': '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-                        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02)',
-                        'floating': '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025)',
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
                     }
                 }
             }
         }
     </script>
 </head>
-<body class="text-slate-800">
+
+<body class="antialiased selection:bg-primary-100 selection:text-primary-700">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -81,7 +212,6 @@
             'F': { val10: 0, val4: 0.0, label: 'F (0)' }
         };
 
-        // Default "Current Semester" (The Playground)
         const INITIAL_CURRENT_SEM = [
             { id: 1, name: 'Machine Learning', credits: 4, grade: '' },
             { id: 2, name: 'Database Systems', credits: 3, grade: '' }
@@ -131,60 +261,72 @@
 
         // --- COMPONENTS ---
 
-        const MetricCard = ({ label, value, subValue, colorClass, icon }) => (
-            <div className="bg-white rounded-lg border border-slate-200 p-5 shadow-subtle flex items-start justify-between transition-all hover:shadow-card group">
+        const MetricCard = ({ label, value, subValue, colorClass, icon, delay }) => (
+            <div
+                className="glass-card rounded-2xl p-6 flex items-start justify-between group animate-slide-up"
+                style={{ animationDelay: `${delay}ms` }}
+            >
                 <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{label}</p>
                     <div className="flex items-baseline gap-2">
-                        <span className={`text-3xl font-bold font-mono tracking-tight ${colorClass}`}>{value}</span>
+                        <span className={`text-4xl font-bold tracking-tighter ${colorClass}`}>{value}</span>
                         {subValue && <span className="text-slate-400 text-sm font-medium">{subValue}</span>}
                     </div>
                 </div>
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-xl ${colorClass.replace('text-', 'bg-').replace('600', '50').replace('700', '50')} ${colorClass}`}>
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl transition-transform duration-300 group-hover:rotate-12 ${colorClass.replace('text-', 'bg-').replace('600', '50').replace('700', '50')} ${colorClass}`}>
                     <i className={`ph-fill ${icon}`}></i>
                 </div>
             </div>
         );
 
-        const SubjectRow = ({ subject, onUpdate, onDelete }) => (
-            <div className="group flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-lg shadow-subtle hover:border-primary-500/50 transition-colors animate-fade-in">
+        const SubjectRow = ({ subject, onUpdate, onDelete, index }) => (
+            <div
+                className="group flex items-center gap-4 p-4 bg-white/50 hover:bg-white rounded-xl border border-transparent hover:border-primary-100 hover:shadow-md transition-all duration-300 animate-fade-in"
+                style={{ animationDelay: `${index * 50}ms` }}
+            >
                 <div className="flex-grow">
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         value={subject.name}
                         onChange={(e) => onUpdate(subject.id, 'name', e.target.value)}
-                        placeholder="Subject Name"
-                        className="w-full text-sm font-medium text-slate-800 placeholder-slate-400 bg-transparent border-none focus:ring-0 p-0"
+                        placeholder="Course Name"
+                        className="w-full text-base font-medium text-slate-700 placeholder-slate-400 bg-transparent border-none focus:ring-0 p-0"
                     />
                 </div>
-                <div className="w-20 border-l border-slate-100 pl-3">
-                    <input 
-                        type="number" 
-                        value={subject.credits}
-                        onChange={(e) => onUpdate(subject.id, 'credits', parseFloat(e.target.value) || 0)}
-                        className="w-full text-sm text-right font-mono bg-slate-50 rounded px-2 py-1 border-none focus:ring-2 focus:ring-primary-100"
-                        min="0"
-                    />
+                <div className="w-24">
+                    <div className="relative">
+                        <input
+                            type="number"
+                            value={subject.credits}
+                            onChange={(e) => onUpdate(subject.id, 'credits', parseFloat(e.target.value) || 0)}
+                            className="w-full text-sm text-center font-mono bg-slate-100/50 hover:bg-slate-100 rounded-lg px-2 py-2 border-none focus:ring-2 focus:ring-primary-100 transition-colors"
+                            min="0"
+                        />
+                        <span className="absolute right-2 top-2 text-[10px] text-slate-400 pointer-events-none">CR</span>
+                    </div>
                 </div>
-                <div className="w-28">
-                    <select 
+                <div className="w-32">
+                    <select
                         value={subject.grade}
                         onChange={(e) => onUpdate(subject.id, 'grade', e.target.value)}
-                        className="w-full text-sm bg-slate-50 border-none rounded px-2 py-1.5 font-medium text-slate-700 focus:ring-2 focus:ring-primary-100 cursor-pointer"
+                        className="w-full text-sm bg-slate-100/50 hover:bg-slate-100 border-none rounded-lg px-3 py-2 font-medium text-slate-700 focus:ring-2 focus:ring-primary-100 cursor-pointer transition-colors appearance-none"
                     >
-                        <option value="">Grade</option>
+                        <option value="">Select Grade</option>
                         {Object.entries(GRADE_POINTS).map(([key, data]) => (
                             <option key={key} value={key}>{data.label}</option>
                         ))}
                     </select>
                 </div>
-                <button onClick={() => onDelete(subject.id)} className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors">
-                    <i className="ph ph-trash"></i>
+                <button
+                    onClick={() => onDelete(subject.id)}
+                    className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                >
+                    <i className="ph-bold ph-trash"></i>
                 </button>
             </div>
         );
 
-        const ProfileSemester = ({ semester, onUpdateName, onDelete, onUpdateSubjects }) => {
+        const ProfileSemester = ({ semester, onUpdateName, onDelete, onUpdateSubjects, index }) => {
             const stats = useMemo(() => calculateSemesterStats(semester.subjects), [semester.subjects]);
             const [isExpanded, setIsExpanded] = useState(true);
 
@@ -202,43 +344,54 @@
             };
 
             return (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-subtle overflow-hidden mb-4 animate-fade-in">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                        <div className="flex items-center gap-3 flex-grow">
-                            <button onClick={() => setIsExpanded(!isExpanded)} className="text-slate-400 hover:text-slate-600">
-                                <i className={`ph-bold ${isExpanded ? 'ph-caret-down' : 'ph-caret-right'}`}></i>
+                <div
+                    className="glass-card rounded-2xl overflow-hidden mb-6 animate-slide-up"
+                    style={{ animationDelay: `${index * 100}ms` }}
+                >
+                    <div className="px-6 py-4 bg-white/40 border-b border-white/40 flex items-center justify-between backdrop-blur-sm">
+                        <div className="flex items-center gap-4 flex-grow">
+                            <button
+                                onClick={() => setIsExpanded(!isExpanded)}
+                                className={`w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-primary-600 hover:bg-primary-50 transition-all ${isExpanded ? 'rotate-90' : ''}`}
+                            >
+                                <i className="ph-bold ph-caret-right"></i>
                             </button>
-                            <input 
-                                type="text" 
+                            <input
+                                type="text"
                                 value={semester.name}
                                 onChange={(e) => onUpdateName(semester.id, e.target.value)}
-                                className="bg-transparent border-none font-semibold text-slate-700 text-sm focus:ring-0 p-0 w-full"
+                                className="bg-transparent border-none font-bold text-slate-700 text-lg focus:ring-0 p-0 w-full placeholder-slate-400"
                                 placeholder="Semester Name (e.g. Fall 2024)"
                             />
                         </div>
-                        <div className="flex items-center gap-4">
-                            <div className="flex items-center gap-3 text-xs font-mono">
-                                <span className="px-2 py-1 bg-white rounded border border-slate-200 text-slate-600">
-                                    {stats.credits} Cr
-                                </span>
-                                <span className={`px-2 py-1 bg-white rounded border border-slate-200 font-bold ${stats.gpa10 >= 9 ? 'text-emerald-600' : 'text-primary-600'}`}>
-                                    GPA: {stats.gpa10.toFixed(2)}
-                                </span>
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-3">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Credits</span>
+                                    <span className="font-mono font-semibold text-slate-700">{stats.credits}</span>
+                                </div>
+                                <div className="w-px h-8 bg-slate-200"></div>
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">GPA</span>
+                                    <span className={`font-mono font-bold text-lg ${stats.gpa10 >= 9 ? 'text-emerald-500' : 'text-primary-600'}`}>
+                                        {stats.gpa10.toFixed(2)}
+                                    </span>
+                                </div>
                             </div>
-                            <button onClick={() => onDelete(semester.id)} className="text-slate-300 hover:text-red-500">
-                                <i className="ph ph-trash"></i>
+                            <button onClick={() => onDelete(semester.id)} className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
+                                <i className="ph-bold ph-trash"></i>
                             </button>
                         </div>
                     </div>
-                    
+
                     {isExpanded && (
-                        <div className="p-4 bg-slate-50/30">
+                        <div className="p-6 bg-white/20">
                             <div className="space-y-2">
-                                {semester.subjects.map(sub => (
-                                    <SubjectRow key={sub.id} subject={sub} onUpdate={handleSubjectUpdate} onDelete={handleSubjectDelete} />
+                                {semester.subjects.map((sub, idx) => (
+                                    <SubjectRow key={sub.id} subject={sub} onUpdate={handleSubjectUpdate} onDelete={handleSubjectDelete} index={idx} />
                                 ))}
                             </div>
-                            <button onClick={addSubject} className="mt-3 text-xs font-medium text-primary-600 hover:text-primary-700 flex items-center gap-1 px-2 py-1 hover:bg-primary-50 rounded w-fit transition-colors">
+                            <button onClick={addSubject} className="mt-4 w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-500 text-sm font-medium hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2">
                                 <i className="ph-bold ph-plus"></i> Add Subject
                             </button>
                         </div>
@@ -250,14 +403,14 @@
         // --- MAIN APP ---
         const App = () => {
             const [view, setView] = useState('dashboard'); // 'dashboard' | 'profile' | 'report'
-            
+
             // State: Profile (The Source of Truth for History)
             const [profileSemesters, setProfileSemesters] = useState([]);
-            
+
             // State: Calculator (The Playground)
             const [currentSemSubjects, setCurrentSemSubjects] = useState(INITIAL_CURRENT_SEM);
             const [config, setConfig] = useState(INITIAL_CONFIG);
-            
+
             const [isLoaded, setIsLoaded] = useState(false);
 
             // --- STORAGE ---
@@ -274,22 +427,20 @@
 
             useEffect(() => {
                 if (isLoaded) {
-                    localStorage.setItem('gpaData_v3', JSON.stringify({ 
-                        profile: profileSemesters, 
-                        current: currentSemSubjects, 
-                        config 
+                    localStorage.setItem('gpaData_v3', JSON.stringify({
+                        profile: profileSemesters,
+                        current: currentSemSubjects,
+                        config
                     }));
                 }
             }, [profileSemesters, currentSemSubjects, config, isLoaded]);
 
             // --- CALCULATIONS ---
-            
-            // 1. Aggregate History from Profile
             const historyStats = useMemo(() => {
                 let credits = 0, pts10 = 0, pts4 = 0;
                 profileSemesters.forEach(sem => {
                     sem.subjects.forEach(sub => {
-                        if(sub.grade && GRADE_POINTS[sub.grade]) {
+                        if (sub.grade && GRADE_POINTS[sub.grade]) {
                             credits += sub.credits;
                             pts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
                             pts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
@@ -299,10 +450,8 @@
                 return { credits, pts10, pts4 };
             }, [profileSemesters]);
 
-            // 2. Calculate Current Semester
             const currentStats = useMemo(() => calculateSemesterStats(currentSemSubjects), [currentSemSubjects]);
 
-            // 3. Calculate Prediction
             const predictionStats = useMemo(() => {
                 if (!config.includeNext) return { credits: 0, pts10: 0, pts4: 0 };
                 const credits = config.nextCredits;
@@ -311,7 +460,6 @@
                 return { credits, pts10, pts4 };
             }, [config]);
 
-            // 4. Totals
             const totals = useMemo(() => {
                 const totalCredits = historyStats.credits + currentStats.credits + predictionStats.credits;
                 const totalPts10 = historyStats.pts10 + currentStats.pts10 + predictionStats.pts10;
@@ -326,23 +474,16 @@
             }, [historyStats, currentStats, predictionStats]);
 
             // --- HANDLERS ---
-            
             const handleExportCSV = () => {
                 let csv = "Context,Semester Name,Subject Name,Credits,Grade\n";
-                
-                // Profile Data
                 profileSemesters.forEach(sem => {
                     sem.subjects.forEach(sub => {
                         csv += `PROFILE,${sem.name},${sub.name},${sub.credits},${sub.grade}\n`;
                     });
                 });
-
-                // Current Calculator Data
                 currentSemSubjects.forEach(sub => {
                     csv += `CALCULATOR,Current Sem,${sub.name},${sub.credits},${sub.grade}\n`;
                 });
-
-                // Config
                 csv += `CONFIG,Next Sem Enabled,${config.includeNext},0,\n`;
                 csv += `CONFIG,Next Sem Credits,${config.nextCredits},0,\n`;
                 csv += `CONFIG,Next Target,${config.nextTarget},0,\n`;
@@ -357,182 +498,195 @@
 
             const handleImportCSV = (e) => {
                 const file = e.target.files[0];
-                if(!file) return;
+                if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (evt) => {
                     const lines = evt.target.result.split('\n');
                     const newProfile = [];
                     const newCurrent = [];
                     const newConfig = { ...config };
-
-                    let currentSemObj = null; 
+                    let currentSemObj = null;
 
                     lines.forEach((line, idx) => {
-                        if(idx === 0 || !line.trim()) return;
+                        if (idx === 0 || !line.trim()) return;
                         const cols = line.split(',').map(c => c.trim());
                         const context = cols[0];
                         const name = cols[1];
-                        const subName = cols[2]; // Actually Subject Name in standard rows
+                        const subName = cols[2];
                         const credits = parseFloat(cols[3]);
                         const grade = cols[4];
 
-                        if(context === 'PROFILE') {
-                            // Find or create semester
+                        if (context === 'PROFILE') {
                             let sem = newProfile.find(s => s.name === name);
-                            if(!sem) {
+                            if (!sem) {
                                 sem = { id: Date.now() + Math.random(), name: name, subjects: [] };
                                 newProfile.push(sem);
                             }
                             sem.subjects.push({ id: Date.now() + Math.random(), name: subName, credits, grade });
                         }
                         else if (context === 'CALCULATOR') {
-                             newCurrent.push({ id: Date.now() + Math.random(), name: subName, credits, grade });
+                            newCurrent.push({ id: Date.now() + Math.random(), name: subName, credits, grade });
                         }
                         else if (context === 'CONFIG') {
-                             if(name === 'Next Sem Enabled') newConfig.includeNext = (subName === 'true');
-                             if(name === 'Next Sem Credits') newConfig.nextCredits = parseFloat(subName);
-                             if(name === 'Next Target') newConfig.nextTarget = parseFloat(subName);
+                            if (name === 'Next Sem Enabled') newConfig.includeNext = (subName === 'true');
+                            if (name === 'Next Sem Credits') newConfig.nextCredits = parseFloat(subName);
+                            if (name === 'Next Target') newConfig.nextTarget = parseFloat(subName);
                         }
                     });
 
-                    if(newProfile.length) setProfileSemesters(newProfile);
-                    if(newCurrent.length) setCurrentSemSubjects(newCurrent);
+                    if (newProfile.length) setProfileSemesters(newProfile);
+                    if (newCurrent.length) setCurrentSemSubjects(newCurrent);
                     setConfig(newConfig);
                     alert("Profile Imported Successfully!");
                 };
                 reader.readAsText(file);
             };
 
-            const resetAll = () => {
-                if(confirm("This will delete all semesters and reset the app. Continue?")) {
-                    setProfileSemesters([]);
-                    setCurrentSemSubjects(INITIAL_CURRENT_SEM);
-                    setConfig(INITIAL_CONFIG);
-                }
-            };
-
             // --- VIEWS ---
-            
             const CalculatorView = () => (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 animate-fade-in">
-                    <div className="lg:col-span-7 space-y-6">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div className="lg:col-span-7 space-y-8">
                         {/* Current Sem Card */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
-                            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                <h2 className="font-semibold text-slate-800 text-sm">Current Semester (Projected)</h2>
-                                <span className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                                    {currentStats.credits} Cr
-                                </span>
+                        <div className="glass-card rounded-3xl overflow-hidden animate-slide-up" style={{ animationDelay: '100ms' }}>
+                            <div className="px-8 py-6 border-b border-white/40 flex justify-between items-center bg-white/30 backdrop-blur-md">
+                                <div>
+                                    <h2 className="font-bold text-slate-800 text-lg">Current Semester</h2>
+                                    <p className="text-xs text-slate-500">Project your current performance</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Credits</span>
+                                    <span className="text-sm font-mono font-bold text-slate-700 bg-white/50 px-3 py-1 rounded-lg border border-white/50">
+                                        {currentStats.credits}
+                                    </span>
+                                </div>
                             </div>
-                            <div className="p-6 space-y-3">
-                                {currentSemSubjects.map(s => (
-                                    <SubjectRow 
-                                        key={s.id} 
-                                        subject={s} 
-                                        onUpdate={(id, f, v) => setCurrentSemSubjects(prev => prev.map(sub => sub.id===id ? {...sub, [f]:v} : sub))} 
-                                        onDelete={(id) => setCurrentSemSubjects(prev => prev.filter(sub => sub.id!==id))}
+                            <div className="p-8 space-y-4">
+                                {currentSemSubjects.map((s, idx) => (
+                                    <SubjectRow
+                                        key={s.id}
+                                        subject={s}
+                                        onUpdate={(id, f, v) => setCurrentSemSubjects(prev => prev.map(sub => sub.id === id ? { ...sub, [f]: v } : sub))}
+                                        onDelete={(id) => setCurrentSemSubjects(prev => prev.filter(sub => sub.id !== id))}
+                                        index={idx}
                                     />
                                 ))}
-                                <button onClick={() => setCurrentSemSubjects([...currentSemSubjects, {id:Date.now(), name:'', credits:3, grade:''}])} className="w-full py-3 border border-dashed border-slate-300 rounded-lg text-slate-500 text-sm font-medium hover:border-primary-500 hover:text-primary-600 hover:bg-primary-50 transition-all flex items-center justify-center gap-2 mt-4">
-                                    <i className="ph-bold ph-plus"></i> Add Course
+                                <button onClick={() => setCurrentSemSubjects([...currentSemSubjects, { id: Date.now(), name: '', credits: 3, grade: '' }])} className="w-full py-4 border border-dashed border-slate-300 rounded-xl text-slate-500 text-sm font-medium hover:border-primary-500 hover:text-primary-600 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2 mt-6 group">
+                                    <div className="w-6 h-6 rounded-full bg-slate-100 group-hover:bg-primary-100 flex items-center justify-center transition-colors">
+                                        <i className="ph-bold ph-plus"></i>
+                                    </div>
+                                    Add Course
                                 </button>
                             </div>
                         </div>
 
                         {/* Prediction Config */}
-                        <div className="bg-white rounded-xl border border-slate-200 shadow-card p-6">
-                            <div className="flex items-center justify-between mb-4">
-                                <span className="text-sm font-medium text-slate-700">Predict Next Semester</span>
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '200ms' }}>
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <span className="text-lg font-bold text-slate-800 block">Future Projection</span>
+                                    <span className="text-xs text-slate-500">Include next semester in calculations</span>
+                                </div>
                                 <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" className="sr-only peer" checked={config.includeNext} onChange={(e) => setConfig({...config, includeNext: e.target.checked})} />
-                                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-primary-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-slate-800"></div>
+                                    <input type="checkbox" className="sr-only peer" checked={config.includeNext} onChange={(e) => setConfig({ ...config, includeNext: e.target.checked })} />
+                                    <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-600 shadow-inner"></div>
                                 </label>
                             </div>
                             {config.includeNext && (
-                                <div className="grid grid-cols-2 gap-4 pl-4 border-l-2 border-slate-100 animate-fade-in">
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Credits</label>
-                                        <input type="number" value={config.nextCredits} onChange={(e) => setConfig({...config, nextCredits: parseFloat(e.target.value)})} className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2" />
+                                <div className="grid grid-cols-2 gap-6 animate-fade-in">
+                                    <div className="bg-white/40 p-4 rounded-xl border border-white/50">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Est. Credits</label>
+                                        <input type="number" value={config.nextCredits} onChange={(e) => setConfig({ ...config, nextCredits: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors" />
                                     </div>
-                                    <div>
-                                        <label className="block text-xs text-slate-500 mb-1">Target GPA</label>
-                                        <input type="number" value={config.nextTarget} onChange={(e) => setConfig({...config, nextTarget: parseFloat(e.target.value)})} className="w-full text-sm bg-slate-50 border border-slate-200 rounded px-3 py-2" />
+                                    <div className="bg-white/40 p-4 rounded-xl border border-white/50">
+                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Target GPA</label>
+                                        <input type="number" value={config.nextTarget} onChange={(e) => setConfig({ ...config, nextTarget: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors" />
                                     </div>
                                 </div>
                             )}
                         </div>
                     </div>
 
-                    <div className="lg:col-span-5 space-y-6">
+                    <div className="lg:col-span-5 space-y-8">
                         {/* Stats */}
-                        <div className="space-y-4">
-                            <MetricCard label="Cumulative CGPA" value={totals.gpa10.toFixed(2)} subValue="/ 10" colorClass="text-primary-600" icon="ph-chart-bar" />
-                            <div className="grid grid-cols-2 gap-4">
-                                <MetricCard label="US GPA" value={totals.gpa4.toFixed(2)} colorClass="text-emerald-600" icon="ph-globe" />
-                                <MetricCard label="German" value={totals.german.toFixed(2)} colorClass="text-amber-600" icon="ph-translate" />
+                        <div className="space-y-5">
+                            <MetricCard label="Cumulative CGPA" value={totals.gpa10.toFixed(2)} subValue="/ 10" colorClass="text-primary-600" icon="ph-chart-bar" delay={300} />
+                            <div className="grid grid-cols-2 gap-5">
+                                <MetricCard label="US GPA" value={totals.gpa4.toFixed(2)} colorClass="text-emerald-600" icon="ph-globe" delay={400} />
+                                <MetricCard label="German" value={totals.german.toFixed(2)} colorClass="text-amber-600" icon="ph-translate" delay={500} />
                             </div>
                         </div>
 
                         {/* History Summary Card */}
-                        <div className="bg-slate-50 rounded-xl border border-slate-200 p-5">
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Previous History</h3>
-                                <button onClick={() => setView('profile')} className="text-xs text-primary-600 hover:underline">Edit Profile</button>
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '600ms' }}>
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-sm font-bold text-slate-800">Academic History</h3>
+                                <button onClick={() => setView('profile')} className="text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors">Manage Profile</button>
                             </div>
+
                             {historyStats.credits > 0 ? (
-                                <div>
-                                    <div className="text-2xl font-bold text-slate-700">{historyStats.credits} <span className="text-sm font-normal text-slate-400">Credits</span></div>
-                                    <div className="text-sm text-slate-500">CGPA: {(historyStats.pts10/historyStats.credits).toFixed(2)}</div>
+                                <div className="bg-white/40 rounded-2xl p-5 border border-white/50 flex items-center justify-between">
+                                    <div>
+                                        <div className="text-3xl font-bold text-slate-700 tracking-tight">{historyStats.credits}</div>
+                                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Credits</div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="text-xl font-mono font-bold text-slate-600">{(historyStats.pts10 / historyStats.credits).toFixed(2)}</div>
+                                        <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Avg GPA</div>
+                                    </div>
                                 </div>
                             ) : (
-                                <div className="text-sm text-slate-400 italic py-2">No history added. Go to "Profile" to add semesters.</div>
+                                <div className="text-center py-8 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                                    <p className="text-sm text-slate-400 mb-2">No history added yet</p>
+                                    <button onClick={() => setView('profile')} className="text-sm text-primary-600 font-medium hover:underline">Add your past semesters</button>
+                                </div>
                             )}
                         </div>
 
-                         {/* Data Actions */}
-                         <div className="bg-white rounded-xl border border-slate-200 p-5 flex gap-2">
-                             <button onClick={handleExportCSV} className="flex-1 py-2 bg-slate-50 border border-slate-200 rounded text-sm font-medium text-slate-600 hover:bg-slate-100">
-                                <i className="ph ph-download-simple mr-1"></i> Export CSV
-                             </button>
-                             <label className="flex-1 py-2 bg-slate-50 border border-slate-200 rounded text-sm font-medium text-slate-600 hover:bg-slate-100 cursor-pointer text-center">
-                                <i className="ph ph-upload-simple mr-1"></i> Import
+                        {/* Data Actions */}
+                        <div className="flex gap-4 animate-slide-up" style={{ animationDelay: '700ms' }}>
+                            <button onClick={handleExportCSV} className="flex-1 py-3 glass-card rounded-xl text-sm font-medium text-slate-600 hover:text-primary-600 hover:bg-white transition-all flex items-center justify-center gap-2">
+                                <i className="ph-bold ph-download-simple"></i> Export
+                            </button>
+                            <label className="flex-1 py-3 glass-card rounded-xl text-sm font-medium text-slate-600 hover:text-primary-600 hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer">
+                                <i className="ph-bold ph-upload-simple"></i> Import
                                 <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
-                             </label>
-                         </div>
+                            </label>
+                        </div>
                     </div>
                 </div>
             );
 
             const ProfileView = () => (
                 <div className="max-w-4xl mx-auto animate-fade-in">
-                    <div className="flex justify-between items-center mb-6">
+                    <div className="flex justify-between items-end mb-8">
                         <div>
-                            <h2 className="text-xl font-bold text-slate-900">Student Profile</h2>
-                            <p className="text-sm text-slate-500">Build your academic history semester by semester.</p>
+                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Student Profile</h2>
+                            <p className="text-slate-500">Build your academic history semester by semester.</p>
                         </div>
-                        <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 flex items-center gap-2 shadow-lg shadow-slate-900/20">
+                        <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="btn-primary px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
                             <i className="ph-bold ph-plus"></i> Add Semester
                         </button>
                     </div>
 
                     {profileSemesters.length === 0 ? (
-                        <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
-                            <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300 text-2xl">
+                        <div className="text-center py-20 glass-card rounded-3xl border-dashed border-2 border-slate-300/50">
+                            <div className="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-6 text-primary-400 text-3xl shadow-inner">
                                 <i className="ph-fill ph-books"></i>
                             </div>
-                            <h3 className="text-slate-900 font-medium mb-1">No Semesters Added</h3>
-                            <p className="text-slate-500 text-sm mb-4">Start building your history to enable accurate analytics.</p>
-                            <button onClick={() => setProfileSemesters([{ id: Date.now(), name: 'Semester 1', subjects: [] }])} className="text-primary-600 font-medium text-sm hover:underline">Create your first semester</button>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Start Your Journey</h3>
+                            <p className="text-slate-500 mb-6 max-w-md mx-auto">Add your previous semesters to unlock powerful insights and accurate predictions.</p>
+                            <button onClick={() => setProfileSemesters([{ id: Date.now(), name: 'Semester 1', subjects: [] }])} className="text-primary-600 font-bold hover:underline">Create your first semester</button>
                         </div>
                     ) : (
-                        <div className="space-y-4">
-                            {profileSemesters.map(sem => (
-                                <ProfileSemester 
-                                    key={sem.id} 
+                        <div className="space-y-6">
+                            {profileSemesters.map((sem, idx) => (
+                                <ProfileSemester
+                                    key={sem.id}
                                     semester={sem}
-                                    onUpdateName={(id, val) => setProfileSemesters(prev => prev.map(s => s.id===id ? {...s, name:val} : s))}
-                                    onUpdateSubjects={(id, subs) => setProfileSemesters(prev => prev.map(s => s.id===id ? {...s, subjects:subs} : s))}
-                                    onDelete={(id) => setProfileSemesters(prev => prev.filter(s => s.id!==id))}
+                                    onUpdateName={(id, val) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, name: val } : s))}
+                                    onUpdateSubjects={(id, subs) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, subjects: subs } : s))}
+                                    onDelete={(id) => setProfileSemesters(prev => prev.filter(s => s.id !== id))}
+                                    index={idx}
                                 />
                             ))}
                         </div>
@@ -541,114 +695,118 @@
             );
 
             const ReportView = () => (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-card animate-fade-in overflow-hidden">
-                    <div className="p-8 border-b border-slate-100 flex justify-between items-start bg-slate-50/30">
+                <div className="glass-card rounded-3xl overflow-hidden animate-fade-in max-w-5xl mx-auto">
+                    <div className="p-10 border-b border-white/40 flex justify-between items-start bg-white/40 backdrop-blur-md">
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-900 mb-1">Official Academic Report</h2>
-                            <p className="text-sm text-slate-500">Generated on {new Date().toLocaleDateString()}</p>
+                            <h2 className="text-3xl font-bold text-slate-900 mb-2">Academic Report</h2>
+                            <p className="text-sm text-slate-500 font-medium">Generated on {new Date().toLocaleDateString()}</p>
                         </div>
-                        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors">
+                        <button onClick={() => window.print()} className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-xl text-sm font-bold hover:bg-slate-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1">
                             <i className="ph-bold ph-printer"></i> Print Report
                         </button>
                     </div>
-                    
-                    <div className="p-8">
-                        <div className="grid grid-cols-4 gap-8 mb-8 pb-8 border-b border-slate-100">
-                            <div>
-                                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">Total Credits</p>
-                                <p className="text-2xl font-bold text-slate-900 font-mono">{totals.credits}</p>
+
+                    <div className="p-10 bg-white/60">
+                        <div className="grid grid-cols-4 gap-8 mb-10 pb-10 border-b border-slate-200">
+                            <div className="p-4 rounded-2xl bg-white/50 border border-white/60 shadow-sm">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">Total Credits</p>
+                                <p className="text-3xl font-bold text-slate-800 font-mono">{totals.credits}</p>
                             </div>
-                            <div>
-                                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">CGPA (10.0)</p>
-                                <p className="text-2xl font-bold text-primary-600 font-mono">{totals.gpa10.toFixed(2)}</p>
+                            <div className="p-4 rounded-2xl bg-white/50 border border-white/60 shadow-sm">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">CGPA (10.0)</p>
+                                <p className="text-3xl font-bold text-primary-600 font-mono">{totals.gpa10.toFixed(2)}</p>
                             </div>
-                            <div>
-                                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">US GPA (4.0)</p>
-                                <p className="text-2xl font-bold text-emerald-600 font-mono">{totals.gpa4.toFixed(2)}</p>
+                            <div className="p-4 rounded-2xl bg-white/50 border border-white/60 shadow-sm">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">US GPA (4.0)</p>
+                                <p className="text-3xl font-bold text-emerald-600 font-mono">{totals.gpa4.toFixed(2)}</p>
                             </div>
-                            <div>
-                                <p className="text-xs text-slate-500 uppercase font-semibold mb-1">German Note</p>
-                                <p className="text-2xl font-bold text-amber-600 font-mono">{totals.german.toFixed(2)}</p>
+                            <div className="p-4 rounded-2xl bg-white/50 border border-white/60 shadow-sm">
+                                <p className="text-xs text-slate-400 uppercase font-bold mb-1">German Note</p>
+                                <p className="text-3xl font-bold text-amber-600 font-mono">{totals.german.toFixed(2)}</p>
                             </div>
                         </div>
 
-                        <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-y border-slate-200">
-                                <tr>
-                                    <th className="px-4 py-3 font-semibold">Component</th>
-                                    <th className="px-4 py-3 font-semibold text-center">Credits</th>
-                                    <th className="px-4 py-3 font-semibold text-right">10-Point</th>
-                                    <th className="px-4 py-3 font-semibold text-right">US 4.0</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {/* Profile History */}
-                                {profileSemesters.length > 0 && (
-                                    <tr><td colSpan="4" className="px-4 py-2 bg-slate-50/50 font-bold text-xs text-slate-500 uppercase tracking-wider">Academic History</td></tr>
-                                )}
-                                {profileSemesters.map(sem => {
-                                    const stats = calculateSemesterStats(sem.subjects);
-                                    return (
-                                        <tr key={sem.id} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3 font-medium text-slate-700">{sem.name}</td>
-                                            <td className="px-4 py-3 text-center text-slate-600">{stats.credits}</td>
-                                            <td className="px-4 py-3 text-right font-mono">{stats.gpa10.toFixed(2)}</td>
-                                            <td className="px-4 py-3 text-right font-mono">{stats.gpa4.toFixed(2)}</td>
-                                        </tr>
-                                    );
-                                })}
-
-                                {/* Current Semester */}
-                                <tr><td colSpan="4" className="px-4 py-2 bg-primary-50/30 font-bold text-xs text-primary-600 uppercase tracking-wider">Current Session</td></tr>
-                                <tr className="bg-primary-50/10">
-                                    <td className="px-4 py-3 font-medium text-primary-900">Current Projected</td>
-                                    <td className="px-4 py-3 text-center text-primary-900">{currentStats.credits}</td>
-                                    <td className="px-4 py-3 text-right font-mono font-bold text-primary-700">{currentStats.gpa10.toFixed(2)}</td>
-                                    <td className="px-4 py-3 text-right font-mono font-bold text-primary-700">{currentStats.gpa4.toFixed(2)}</td>
-                                </tr>
-                                {currentSemSubjects.map(s => (
-                                    <tr key={s.id} className="text-slate-500 hover:bg-slate-50">
-                                        <td className="px-4 py-2 pl-8 border-l-2 border-transparent hover:border-slate-200 text-xs">↳ {s.name || 'Untitled Course'}</td>
-                                        <td className="px-4 py-2 text-center text-xs">{s.credits}</td>
-                                        <td className="px-4 py-2 text-right font-mono text-xs">{s.grade ? GRADE_POINTS[s.grade].val10 : '-'}</td>
-                                        <td className="px-4 py-2 text-right font-mono text-xs">{s.grade ? GRADE_POINTS[s.grade].val4 : '-'}</td>
+                        <div className="overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+                            <table className="w-full text-sm text-left bg-white">
+                                <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                                    <tr>
+                                        <th className="px-6 py-4 font-bold">Component</th>
+                                        <th className="px-6 py-4 font-bold text-center">Credits</th>
+                                        <th className="px-6 py-4 font-bold text-right">10-Point</th>
+                                        <th className="px-6 py-4 font-bold text-right">US 4.0</th>
                                     </tr>
-                                ))}
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {/* Profile History */}
+                                    {profileSemesters.length > 0 && (
+                                        <tr><td colSpan="4" className="px-6 py-3 bg-slate-50/80 font-bold text-xs text-slate-400 uppercase tracking-wider">Academic History</td></tr>
+                                    )}
+                                    {profileSemesters.map(sem => {
+                                        const stats = calculateSemesterStats(sem.subjects);
+                                        return (
+                                            <tr key={sem.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-6 py-4 font-semibold text-slate-700">{sem.name}</td>
+                                                <td className="px-6 py-4 text-center text-slate-600">{stats.credits}</td>
+                                                <td className="px-6 py-4 text-right font-mono text-slate-600">{stats.gpa10.toFixed(2)}</td>
+                                                <td className="px-6 py-4 text-right font-mono text-slate-600">{stats.gpa4.toFixed(2)}</td>
+                                            </tr>
+                                        );
+                                    })}
 
-                                {/* Future Prediction */}
-                                {config.includeNext && (
-                                    <>
-                                        <tr><td colSpan="4" className="px-4 py-2 bg-slate-50/50 font-bold text-xs text-slate-500 uppercase tracking-wider">Future Projection</td></tr>
-                                        <tr>
-                                            <td className="px-4 py-3 font-medium text-slate-500 italic">Next Semester Target</td>
-                                            <td className="px-4 py-3 text-center text-slate-500">{config.nextCredits}</td>
-                                            <td className="px-4 py-3 text-right font-mono text-slate-500">{config.nextTarget.toFixed(2)}</td>
-                                            <td className="px-4 py-3 text-right font-mono text-slate-500">{interpolateUS(config.nextTarget).toFixed(2)}</td>
+                                    {/* Current Semester */}
+                                    <tr><td colSpan="4" className="px-6 py-3 bg-primary-50/50 font-bold text-xs text-primary-600 uppercase tracking-wider">Current Session</td></tr>
+                                    <tr className="bg-primary-50/20">
+                                        <td className="px-6 py-4 font-bold text-primary-900">Current Projected</td>
+                                        <td className="px-6 py-4 text-center text-primary-900 font-bold">{currentStats.credits}</td>
+                                        <td className="px-6 py-4 text-right font-mono font-bold text-primary-700">{currentStats.gpa10.toFixed(2)}</td>
+                                        <td className="px-6 py-4 text-right font-mono font-bold text-primary-700">{currentStats.gpa4.toFixed(2)}</td>
+                                    </tr>
+                                    {currentSemSubjects.map(s => (
+                                        <tr key={s.id} className="text-slate-500 hover:bg-slate-50">
+                                            <td className="px-6 py-3 pl-10 border-l-4 border-transparent hover:border-primary-200 text-xs font-medium">↳ {s.name || 'Untitled Course'}</td>
+                                            <td className="px-6 py-3 text-center text-xs">{s.credits}</td>
+                                            <td className="px-6 py-3 text-right font-mono text-xs">{s.grade ? GRADE_POINTS[s.grade].val10 : '-'}</td>
+                                            <td className="px-6 py-3 text-right font-mono text-xs">{s.grade ? GRADE_POINTS[s.grade].val4 : '-'}</td>
                                         </tr>
-                                    </>
-                                )}
-                            </tbody>
-                        </table>
+                                    ))}
+
+                                    {/* Future Prediction */}
+                                    {config.includeNext && (
+                                        <>
+                                            <tr><td colSpan="4" className="px-6 py-3 bg-slate-50/80 font-bold text-xs text-slate-400 uppercase tracking-wider">Future Projection</td></tr>
+                                            <tr>
+                                                <td className="px-6 py-4 font-medium text-slate-500 italic">Next Semester Target</td>
+                                                <td className="px-6 py-4 text-center text-slate-500">{config.nextCredits}</td>
+                                                <td className="px-6 py-4 text-right font-mono text-slate-500">{config.nextTarget.toFixed(2)}</td>
+                                                <td className="px-6 py-4 text-right font-mono text-slate-500">{interpolateUS(config.nextTarget).toFixed(2)}</td>
+                                            </tr>
+                                        </>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             );
 
             return (
-                <div className="min-h-screen flex flex-col px-4 sm:px-6 py-6 max-w-6xl mx-auto">
-                    <header className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-slate-800 text-white rounded-lg flex items-center justify-center shadow-lg">
-                                <i className="ph-bold ph-student text-xl"></i>
+                <div className="min-h-screen flex flex-col px-4 sm:px-6 py-8 max-w-7xl mx-auto">
+                    <header className="flex items-center justify-between mb-10 animate-slide-up">
+                        <div className="flex items-center gap-4">
+                            <div className="w-12 h-12 bg-gradient-to-br from-slate-800 to-slate-900 text-white rounded-xl flex items-center justify-center shadow-xl shadow-slate-900/20">
+                                <i className="ph-bold ph-student text-2xl"></i>
                             </div>
                             <div>
-                                <h1 className="font-bold text-slate-900 text-lg leading-tight">Academic Dashboard</h1>
-                                <p className="text-xs text-slate-500 font-medium">Fall 2025</p>
+                                <h1 className="font-bold text-slate-900 text-2xl leading-none mb-1 tracking-tight">Academic Dashboard</h1>
+                                <p className="text-sm text-slate-500 font-medium">Fall 2025</p>
                             </div>
                         </div>
-                        <div className="flex bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
-                            <button onClick={() => setView('dashboard')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'dashboard' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Calculator</button>
-                            <button onClick={() => setView('profile')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'profile' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Profile</button>
-                            <button onClick={() => setView('report')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${view === 'report' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Report</button>
+
+                        {/* Floating Nav */}
+                        <div className="glass p-1.5 rounded-full flex gap-1 shadow-lg">
+                            <button onClick={() => setView('dashboard')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'dashboard' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Calculator</button>
+                            <button onClick={() => setView('profile')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'profile' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Profile</button>
+                            <button onClick={() => setView('report')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'report' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Report</button>
                         </div>
                     </header>
 
@@ -663,4 +821,5 @@
         root.render(<App />);
     </script>
 </body>
+
 </html>
