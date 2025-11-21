@@ -14,6 +14,10 @@ You don't need to install anything! Access the full application directly in your
 
 ## Features
 
+- **Visual Analytics 📊**:
+    -   **Performance Trend**: Interactive chart showing your SGPA vs. Cumulative CGPA progression over time.
+- **Reverse Calculator 🎯**:
+    -   **Path to Target**: Calculate exactly what GPA you need in remaining credits to hit your dream CGPA.
 - **Multi-Scale GPA Calculation**: Automatically calculates and converts grades between:
     - 10-point CGPA Scale
     - US 4.0 GPA Scale
@@ -24,7 +28,7 @@ You don't need to install anything! Access the full application directly in your
 - **Current Semester Projection**:
     - Input current semester subjects to see how they affect your overall CGPA.
 - **Future Performance Prediction**:
-    - "What-if" analysis: Project your cumulative CGPA by setting targets for future semesters.
+    - "What-if" analysis: Project your cumulative CGPA using an interactive slider.
 - **Data Persistence**:
     - Automatically saves your data to your browser's local storage so you never lose your progress.
 - **Import/Export**:
@@ -36,7 +40,6 @@ You don't need to install anything! Access the full application directly in your
     - Beautiful Glassmorphism design.
     - Fluid animations and transitions.
     - Responsive layout for all devices.
-    - Premium light theme aesthetics.
 
 ## 📖 User Guide
 

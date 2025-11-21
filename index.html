@@ -19,6 +19,9 @@
     <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,31 +34,25 @@
             --glass-border: rgba(255, 255, 255, 0.5);
             --glass-bg: rgba(255, 255, 255, 0.65);
             --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg-gradient-1: hsla(253, 16%, 7%, 1);
+            --bg-gradient-2: hsla(225, 39%, 30%, 1);
+            --bg-gradient-3: hsla(339, 49%, 30%, 1);
         }
 
         body {
             font-family: 'Outfit', sans-serif;
-            background-color: #f3f4f6;
-            background-image:
-                radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
-                radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
-                radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
-            background-attachment: fixed;
-            background-size: cover;
-            color: #1e293b;
-            -webkit-font-smoothing: antialiased;
-            min-height: 100vh;
-        }
-
-        /* Light Theme Override for body background to be more 'fluidic' and light as requested, 
-           but let's make it a very subtle, professional light mesh instead of dark for a "GPA calculator".
-           Actually, let's go for a super clean, premium light mode. */
-        body {
             background-color: #FDFBF7;
             background-image:
                 radial-gradient(at 40% 20%, hsla(28, 100%, 74%, 0.1) 0px, transparent 50%),
                 radial-gradient(at 80% 0%, hsla(189, 100%, 56%, 0.1) 0px, transparent 50%),
                 radial-gradient(at 0% 50%, hsla(355, 100%, 93%, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            background-size: cover;
+            color: var(--text-main);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
         }
 
         .font-mono {
@@ -88,6 +85,7 @@
             -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--glass-border);
             box-shadow: var(--glass-shadow);
+            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
         .glass-card {
@@ -96,7 +94,7 @@
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.6);
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.3s ease, border-color 0.3s ease;
         }
 
         .glass-card:hover {
@@ -143,12 +141,13 @@
             border: none;
             border-bottom: 2px solid transparent;
             transition: all 0.3s ease;
+            color: var(--text-main);
         }
 
         .input-ghost:focus {
             outline: none;
             border-bottom-color: #6366f1;
-            background: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.1);
         }
 
         .btn-primary {
@@ -186,7 +185,6 @@
                         sans: ['Outfit', 'sans-serif'],
                     },
                     colors: {
-                        slate: { 850: '#1e293b' },
                         primary: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
                     }
                 }
@@ -199,7 +197,7 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { useState, useEffect, useMemo } = React;
+        const { useState, useEffect, useMemo, useRef } = React;
 
         // --- CONSTANTS ---
         const GRADE_POINTS = {
@@ -261,6 +259,220 @@
 
         // --- COMPONENTS ---
 
+        const AnalyticsCard = ({ history, current }) => {
+            const chartRef = useRef(null);
+            const canvasRef = useRef(null);
+
+            const data = useMemo(() => {
+                const labels = [];
+                const sgpaData = [];
+                const cgpaData = [];
+
+                let totalCredits = 0;
+                let totalPts = 0;
+
+                history.forEach(sem => {
+                    labels.push(sem.name);
+                    const stats = calculateSemesterStats(sem.subjects);
+                    sgpaData.push(stats.gpa10);
+
+                    totalCredits += stats.credits;
+                    totalPts += stats.pts10;
+                    cgpaData.push(totalCredits > 0 ? totalPts / totalCredits : 0);
+                });
+
+                // Add current if it has subjects
+                if (current.length > 0) {
+                    labels.push('Current');
+                    const stats = calculateSemesterStats(current);
+                    sgpaData.push(stats.gpa10);
+
+                    totalCredits += stats.credits;
+                    totalPts += stats.pts10;
+                    cgpaData.push(totalCredits > 0 ? totalPts / totalCredits : 0);
+                }
+
+                return { labels, sgpaData, cgpaData };
+            }, [history, current]);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+
+                if (chartRef.current) {
+                    chartRef.current.destroy();
+                }
+
+                const ctx = canvasRef.current.getContext('2d');
+
+                // Gradient for Line
+                const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+                gradient.addColorStop(0, 'rgba(99, 102, 241, 0.5)');
+                gradient.addColorStop(1, 'rgba(99, 102, 241, 0.0)');
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.labels,
+                        datasets: [
+                            {
+                                label: 'SGPA',
+                                data: data.sgpaData,
+                                borderColor: '#6366f1',
+                                backgroundColor: gradient,
+                                tension: 0.4,
+                                fill: true,
+                                pointBackgroundColor: '#ffffff',
+                                pointBorderColor: '#6366f1',
+                                pointRadius: 4,
+                                pointHoverRadius: 6
+                            },
+                            {
+                                label: 'Cumulative CGPA',
+                                data: data.cgpaData,
+                                borderColor: '#10b981',
+                                borderDash: [5, 5],
+                                tension: 0.4,
+                                fill: false,
+                                pointBackgroundColor: '#ffffff',
+                                pointBorderColor: '#10b981',
+                                pointRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'top',
+                                labels: {
+                                    usePointStyle: true,
+                                    boxWidth: 8,
+                                    font: { family: 'Outfit', size: 12 }
+                                }
+                            },
+                            tooltip: {
+                                mode: 'index',
+                                intersect: false,
+                                backgroundColor: 'rgba(30, 41, 59, 0.9)',
+                                titleFont: { family: 'Outfit', size: 13 },
+                                bodyFont: { family: 'Outfit', size: 12 },
+                                padding: 10,
+                                cornerRadius: 8,
+                                displayColors: true
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                min: 4,
+                                max: 10,
+                                grid: {
+                                    color: 'rgba(148, 163, 184, 0.1)',
+                                    borderDash: [4, 4]
+                                },
+                                ticks: {
+                                    font: { family: 'Outfit' },
+                                    color: '#94a3b8'
+                                }
+                            },
+                            x: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    font: { family: 'Outfit' },
+                                    color: '#94a3b8'
+                                }
+                            }
+                        },
+                        interaction: {
+                            mode: 'nearest',
+                            axis: 'x',
+                            intersect: false
+                        }
+                    }
+                });
+
+                return () => {
+                    if (chartRef.current) chartRef.current.destroy();
+                };
+            }, [data]);
+
+            if (data.labels.length < 2) return null;
+
+            return (
+                <div className="glass-card rounded-3xl p-6 animate-slide-up mb-8" style={{ animationDelay: '400ms' }}>
+                    <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">Performance Trend</h3>
+                    <div className="h-64 w-full">
+                        <canvas ref={canvasRef}></canvas>
+                    </div>
+                </div>
+            );
+        };
+
+        const TargetCalculator = ({ currentCGPA, currentCredits }) => {
+            const [targetCGPA, setTargetCGPA] = useState(9.0);
+            const [remainingCredits, setRemainingCredits] = useState(24);
+
+            const requiredGPA = useMemo(() => {
+                if (!currentCredits) return 0;
+                const currentPts = currentCGPA * currentCredits;
+                const totalCredits = currentCredits + remainingCredits;
+                const targetPts = targetCGPA * totalCredits;
+                const neededPts = targetPts - currentPts;
+                const neededGPA = neededPts / remainingCredits;
+                return Math.min(Math.max(neededGPA, 0), 10);
+            }, [currentCGPA, currentCredits, targetCGPA, remainingCredits]);
+
+            const isImpossible = requiredGPA > 10;
+
+            return (
+                <div className="glass-card rounded-3xl p-8 animate-slide-up mt-8" style={{ animationDelay: '500ms' }}>
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center text-xl">
+                            <i className="ph-bold ph-target"></i>
+                        </div>
+                        <div>
+                            <h3 className="font-bold text-slate-800 text-lg">Path to Target</h3>
+                            <p className="text-xs text-slate-500">Reverse Calculator</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6 mb-6">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Goal CGPA</label>
+                            <input
+                                type="number"
+                                value={targetCGPA}
+                                onChange={(e) => setTargetCGPA(parseFloat(e.target.value))}
+                                step="0.01"
+                                max="10"
+                                className="w-full text-xl font-mono font-bold bg-transparent border-b-2 border-slate-200 focus:border-rose-500 focus:outline-none py-1 transition-colors text-slate-700"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Credits Left</label>
+                            <input
+                                type="number"
+                                value={remainingCredits}
+                                onChange={(e) => setRemainingCredits(parseFloat(e.target.value))}
+                                className="w-full text-xl font-mono font-bold bg-transparent border-b-2 border-slate-200 focus:border-rose-500 focus:outline-none py-1 transition-colors text-slate-700"
+                            />
+                        </div>
+                    </div>
+
+                    <div className={`p-4 rounded-xl border ${isImpossible ? 'bg-red-50 border-red-100 text-red-700' : 'bg-emerald-50 border-emerald-100 text-emerald-700'} transition-colors`}>
+                        <div className="flex justify-between items-center">
+                            <span className="text-sm font-medium">Required GPA</span>
+                            <span className="text-2xl font-bold font-mono">{requiredGPA.toFixed(2)}</span>
+                        </div>
+                        {isImpossible && <p className="text-xs mt-1 opacity-80">Mathematically impossible with current credits.</p>}
+                    </div>
+                </div>
+            );
+        };
+
         const MetricCard = ({ label, value, subValue, colorClass, icon, delay }) => (
             <div
                 className="glass-card rounded-2xl p-6 flex items-start justify-between group animate-slide-up"
@@ -299,7 +511,7 @@
                             type="number"
                             value={subject.credits}
                             onChange={(e) => onUpdate(subject.id, 'credits', parseFloat(e.target.value) || 0)}
-                            className="w-full text-sm text-center font-mono bg-slate-100/50 hover:bg-slate-100 rounded-lg px-2 py-2 border-none focus:ring-2 focus:ring-primary-100 transition-colors"
+                            className="w-full text-sm text-center font-mono bg-slate-100/50 hover:bg-slate-100 rounded-lg px-2 py-2 border-none focus:ring-2 focus:ring-primary-100 transition-colors text-slate-700"
                             min="0"
                         />
                         <span className="absolute right-2 top-2 text-[10px] text-slate-400 pointer-events-none">CR</span>
@@ -595,11 +807,22 @@
                                 <div className="grid grid-cols-2 gap-6 animate-fade-in">
                                     <div className="bg-white/40 p-4 rounded-xl border border-white/50">
                                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Est. Credits</label>
-                                        <input type="number" value={config.nextCredits} onChange={(e) => setConfig({ ...config, nextCredits: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors" />
+                                        <input type="number" value={config.nextCredits} onChange={(e) => setConfig({ ...config, nextCredits: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors text-slate-700" />
                                     </div>
                                     <div className="bg-white/40 p-4 rounded-xl border border-white/50">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Target GPA</label>
-                                        <input type="number" value={config.nextTarget} onChange={(e) => setConfig({ ...config, nextTarget: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors" />
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Target GPA</label>
+                                            <span className="text-sm font-bold font-mono text-primary-600">{config.nextTarget}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="10"
+                                            step="0.1"
+                                            value={config.nextTarget}
+                                            onChange={(e) => setConfig({ ...config, nextTarget: parseFloat(e.target.value) })}
+                                            className="w-full accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                        />
                                     </div>
                                 </div>
                             )}
@@ -607,6 +830,9 @@
                     </div>
 
                     <div className="lg:col-span-5 space-y-8">
+                        {/* Analytics Chart */}
+                        <AnalyticsCard history={profileSemesters} current={currentSemSubjects} />
+
                         {/* Stats */}
                         <div className="space-y-5">
                             <MetricCard label="Cumulative CGPA" value={totals.gpa10.toFixed(2)} subValue="/ 10" colorClass="text-primary-600" icon="ph-chart-bar" delay={300} />
@@ -641,6 +867,9 @@
                                 </div>
                             )}
                         </div>
+
+                        {/* Reverse Calculator */}
+                        <TargetCalculator currentCGPA={totals.gpa10} currentCredits={totals.credits} />
 
                         {/* Data Actions */}
                         <div className="flex gap-4 animate-slide-up" style={{ animationDelay: '700ms' }}>
@@ -798,15 +1027,30 @@
                             </div>
                             <div>
                                 <h1 className="font-bold text-slate-900 text-2xl leading-none mb-1 tracking-tight">Academic Dashboard</h1>
-                                <p className="text-sm text-slate-500 font-medium">Fall 2025</p>
+                                <p className="text-slate-500 text-sm font-medium">Track, Analyze, Excel.</p>
                             </div>
                         </div>
-
-                        {/* Floating Nav */}
-                        <div className="glass p-1.5 rounded-full flex gap-1 shadow-lg">
-                            <button onClick={() => setView('dashboard')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'dashboard' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Calculator</button>
-                            <button onClick={() => setView('profile')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'profile' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Profile</button>
-                            <button onClick={() => setView('report')} className={`px-6 py-2 rounded-full text-sm font-bold transition-all duration-300 ${view === 'report' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'}`}>Report</button>
+                        <div className="flex items-center gap-4">
+                            <nav className="glass-card p-1 rounded-xl flex items-center gap-1">
+                                <button
+                                    onClick={() => setView('dashboard')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'dashboard' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                                >
+                                    Dashboard
+                                </button>
+                                <button
+                                    onClick={() => setView('profile')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                                >
+                                    Profile
+                                </button>
+                                <button
+                                    onClick={() => setView('report')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'report' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                                >
+                                    Report
+                                </button>
+                            </nav>
                         </div>
                     </header>
 
