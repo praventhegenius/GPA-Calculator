@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive GPA Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .grade-select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+        }
+        .tab-active {
+            border-bottom: 2px solid #4f46e5;
+            color: #4f46e5;
+        }
+        .tab-inactive {
+            border-bottom: 2px solid transparent;
+            color: #6b7280;
+        }
+        .german-flag {
+            background: linear-gradient(to bottom, #000000 33%, #DD0000 33%, #DD0000 66%, #FFCE00 66%);
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+    <!-- Navigation Tabs -->
+    <div class="sticky top-0 z-50 bg-white shadow-sm border-b border-slate-200">
+        <div class="max-w-4xl mx-auto px-4">
+            <div class="flex space-x-8">
+                <button onclick="switchTab('calculator')" id="tab-btn-calculator" class="tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors">
+                    <i class="fas fa-calculator"></i> Calculator
+                </button>
+                <button onclick="switchTab('report')" id="tab-btn-report" class="tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors">
+                    <i class="fas fa-chart-pie"></i> Semester Report
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
+        <!-- CALCULATOR TAB -->
+        <div id="view-calculator" class="space-y-6">
+            
+            <!-- Header -->
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-slate-900">GPA Conversion Suite</h1>
+                <p class="mt-2 text-slate-600">10-Point • US 4.0 • German Scale</p>
+            </div>
+
+            <!-- Control Panel -->
+            <div class="bg-white shadow-sm rounded-xl border border-slate-200 p-4 sm:p-6">
+                <div class="flex flex-col sm:flex-row justify-center items-center gap-6">
+                    
+                    <!-- Previous Semesters Toggle -->
+                    <label class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <!-- Added 'peer' class to input to control siblings -->
+                            <input type="checkbox" id="toggle-prev" class="sr-only peer" onchange="calculate()">
+                            <!-- Added peer-checked classes for background color -->
+                            <div class="block bg-slate-200 w-14 h-8 rounded-full transition-colors duration-300 peer-checked:bg-indigo-600"></div>
+                            <!-- Added peer-checked classes for dot movement -->
+                            <div class="absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition transform duration-300 ease-in-out peer-checked:translate-x-6"></div>
+                        </div>
+                        <div class="ml-3 text-slate-700 font-medium">
+                            Include Previous Sems
+                            <div class="text-xs text-slate-400 font-normal">89 Credits History</div>
+                        </div>
+                    </label>
+
+                    <!-- Next Semester Toggle -->
+                    <label class="flex items-center cursor-pointer">
+                        <div class="relative">
+                            <!-- Added 'peer' class to input to control siblings -->
+                            <input type="checkbox" id="toggle-next" class="sr-only peer" onchange="toggleNextSem()">
+                            <!-- Added peer-checked classes for background color -->
+                            <div class="block bg-slate-200 w-14 h-8 rounded-full transition-colors duration-300 peer-checked:bg-indigo-600"></div>
+                            <!-- Added peer-checked classes for dot movement -->
+                            <div class="absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition transform duration-300 ease-in-out peer-checked:translate-x-6"></div>
+                        </div>
+                        <div class="ml-3 text-slate-700 font-medium">
+                            Predict Next Sem
+                            <div class="text-xs text-slate-400 font-normal">Projected 26 Credits</div>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Next Sem Input -->
+                <div id="next-sem-container" class="hidden mt-6 pt-6 border-t border-slate-100">
+                    <div class="max-w-xs mx-auto">
+                        <label class="block text-sm font-medium text-slate-700 mb-2 text-center">Predicted GPA for Next Semester</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <input type="number" id="next-sem-gpa" min="0" max="10" step="0.1" value="9.0" oninput="calculate()" 
+                                class="block w-full pr-12 pl-4 py-3 sm:text-sm border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 border text-center font-bold text-lg text-indigo-600" 
+                                placeholder="0.00">
+                            <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                <span class="text-gray-400 sm:text-sm">/ 10</span>
+                            </div>
+                        </div>
+                        <p class="text-xs text-center text-slate-400 mt-2">This will be converted to US/German scales automatically.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Card -->
+            <div class="bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-200">
+                
+                <!-- Subject List Header -->
+                <div class="bg-slate-50 px-6 py-4 border-b border-slate-200 grid grid-cols-12 gap-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    <div class="col-span-6 sm:col-span-7">Subject</div>
+                    <div class="col-span-2 text-center">Credits</div>
+                    <div class="col-span-4 sm:col-span-3 text-center">Grade</div>
+                </div>
+
+                <!-- Subjects Container -->
+                <div id="subjects-container" class="divide-y divide-slate-100">
+                    <!-- Subjects will be injected here by JS -->
+                </div>
+
+                <!-- Result Footer -->
+                <div class="bg-slate-900 text-white p-6 sm:p-8">
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        <!-- 10 Point Scale -->
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden">
+                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10">10-Point Scale</span>
+                            <div class="flex items-baseline gap-1 z-10">
+                                <span id="res-10" class="text-4xl font-bold text-indigo-400">0.00</span>
+                                <span class="text-slate-500 text-sm">/ 10</span>
+                            </div>
+                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">10</div>
+                        </div>
+
+                        <!-- US Scale -->
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden">
+                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10 flex items-center gap-2">
+                                <img src="https://flagcdn.com/us.svg" class="w-4 h-3 rounded-sm opacity-80" alt="USA"> US 4.0 Scale
+                            </span>
+                            <div class="flex items-baseline gap-1 z-10">
+                                <span id="res-4" class="text-4xl font-bold text-emerald-400">0.00</span>
+                                <span class="text-slate-500 text-sm">/ 4.0</span>
+                            </div>
+                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">US</div>
+                        </div>
+
+                        <!-- German Scale -->
+                        <div class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 flex flex-col items-center justify-center relative overflow-hidden">
+                            <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-2 z-10 flex items-center gap-2">
+                                <div class="w-4 h-3 rounded-sm opacity-80 german-flag"></div> German Scale
+                            </span>
+                            <div class="flex items-baseline gap-1 z-10">
+                                <span id="res-de" class="text-4xl font-bold text-yellow-400">0.00</span>
+                                <span class="text-slate-500 text-sm">(Lower is better)</span>
+                            </div>
+                            <div class="text-[10px] text-slate-500 mt-1 z-10">Modified Bavarian Formula</div>
+                            <div class="absolute -right-4 -bottom-4 text-8xl text-white opacity-5 font-bold">DE</div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-center mt-8">
+                <button onclick="resetForm()" class="text-sm text-slate-500 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2 mx-auto">
+                    <i class="fas fa-rotate-right"></i> Reset all grades
+                </button>
+            </div>
+        </div>
+
+        <!-- REPORT TAB -->
+        <div id="view-report" class="hidden">
+            <div class="bg-white shadow-xl rounded-2xl overflow-hidden border border-slate-200">
+                <div class="p-6 border-b border-slate-200 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-900">Academic Report Card</h2>
+                        <p class="text-sm text-slate-500">Detailed breakdown by semester components</p>
+                    </div>
+                    <button onclick="window.print()" class="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center gap-2">
+                        <i class="fas fa-print"></i> Print
+                    </button>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Component</th>
+                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Credits</th>
+                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-indigo-600 uppercase tracking-wider bg-indigo-50/50">10-Point</th>
+                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-emerald-600 uppercase tracking-wider bg-emerald-50/50">US 4.0</th>
+                                <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-amber-600 uppercase tracking-wider bg-amber-50/50">German</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-slate-200" id="report-table-body">
+                            <!-- JS populated -->
+                        </tbody>
+                        <tfoot class="bg-slate-50 font-semibold text-slate-900">
+                            <tr class="border-t-2 border-slate-200">
+                                <td class="px-6 py-4">Cumulative GPA</td>
+                                <td class="px-6 py-4 text-center" id="report-total-credits">0</td>
+                                <td class="px-6 py-4 text-center text-indigo-700 bg-indigo-50/50" id="report-total-10">0.00</td>
+                                <td class="px-6 py-4 text-center text-emerald-700 bg-emerald-50/50" id="report-total-4">0.00</td>
+                                <td class="px-6 py-4 text-center text-amber-700 bg-amber-50/50" id="report-total-de">0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+                
+                <div class="p-6 bg-slate-50 text-xs text-slate-500 space-y-1">
+                    <p class="font-semibold text-slate-700 mb-2">Conversion Logic:</p>
+                    <p>• <strong>US Scale:</strong> Vellore Institute Mapping (S/A=4.0, B=3.5, C=3.0, D=2.5, E=2.0, F=0).</p>
+                    <p>• <strong>German Scale:</strong> Modified Bavarian Formula: 1 + 3 × (10 - GPA) / (10 - 5). (1.0 is best, 4.0 is pass).</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 1. CONFIGURATION
+        // --------------------------------
+        const subjects = [
+            { id: '1-t', name: 'ML - DE (Theory)', credits: 3, group: 'ML - DE' },
+            { id: '1-l', name: 'ML - DE (Lab)', credits: 1, group: 'ML - DE' },
+            { id: '2-t', name: 'DBMS - DC (Theory)', credits: 3, group: 'DBMS - DC' },
+            { id: '2-l', name: 'DBMS - DC (Lab)', credits: 1, group: 'DBMS - DC' },
+            { id: '3-t', name: 'OS - DC (Theory)', credits: 3, group: 'OS - DC' },
+            { id: '3-l', name: 'OS - DC (Lab)', credits: 1, group: 'OS - DC' },
+            { id: '4', name: 'AI - DC', credits: 3, group: null },
+            { id: '5-t', name: 'Compilers - DC (Theory)', credits: 3, group: 'Compilers - DC' },
+            { id: '5-l', name: 'Compilers - DC (Lab)', credits: 1, group: 'Compilers - DC' },
+            { id: '6-t', name: 'CN - DC (Theory)', credits: 3, group: 'CN - DC' },
+            { id: '6-l', name: 'CN - DC (Lab)', credits: 1, group: 'CN - DC' },
+            { id: '7', name: 'German - FC', credits: 2, group: null },
+            { id: '8', name: 'NPTEL - OE', credits: 3, group: null }
+        ];
+
+        // Previous Semesters Data
+        const PREV_DATA = {
+            credits: 89,
+            points10: 766,
+            get gpa10() { return this.points10 / this.credits; }
+        };
+        
+        const NEXT_SEM_CREDITS = 26;
+
+        // Updated Grading Scale based on User Image
+        const gradePoints = {
+            'S': { val10: 10, val4: 4.0 },
+            'A': { val10: 9, val4: 4.0 },
+            'B': { val10: 8, val4: 3.5 },
+            'C': { val10: 7, val4: 3.0 },
+            'D': { val10: 6, val4: 2.5 },
+            'E': { val10: 5, val4: 2.0 },
+            'F': { val10: 0, val4: 0.0 }
+        };
+
+        // 2. HELPER FUNCTIONS
+        // --------------------------------
+
+        // Modified Bavarian Formula: 1 + 3 * ((Nmax - N) / (Nmax - Nmin))
+        // Nmax = 10, Nmin = 5 (Pass)
+        function convertToGerman(gpa10) {
+            if (gpa10 < 5) return 5.0; // Fail (Usually > 4.0 is fail, set to 5.0 for clarity)
+            if (gpa10 > 10) return 1.0;
+            const result = 1 + 3 * ((10 - gpa10) / (10 - 5));
+            return parseFloat(result.toFixed(2));
+        }
+
+        // Interpolate US GPA for aggregate values (like previous sem)
+        // Maps 10-scale GPA directly to US scale using piecewise linear interpolation based on the table
+        function interpolateUS(gpa10) {
+            if (gpa10 >= 9) return 4.0; // 9-10 -> 4.0
+            if (gpa10 >= 8) return 3.5 + ((gpa10 - 8) / 1) * 0.5; // 8-9 -> 3.5-4.0
+            if (gpa10 >= 7) return 3.0 + ((gpa10 - 7) / 1) * 0.5; // 7-8 -> 3.0-3.5
+            if (gpa10 >= 6) return 2.5 + ((gpa10 - 6) / 1) * 0.5; // 6-7 -> 2.5-3.0
+            if (gpa10 >= 5) return 2.0 + ((gpa10 - 5) / 1) * 0.5; // 5-6 -> 2.0-2.5
+            return 0.0; // Fail
+        }
+
+        // 3. UI RENDERING
+        // --------------------------------
+        const container = document.getElementById('subjects-container');
+        
+        function renderSubjects() {
+            let html = '';
+            let lastGroup = '';
+
+            subjects.forEach((sub) => {
+                let isFirstInGroup = sub.group && sub.group !== lastGroup;
+                lastGroup = sub.group;
+                
+                const displayName = sub.group ? (sub.name.includes('Theory') ? 'Theory' : 'Lab') : sub.name;
+                const rowBg = sub.group ? (sub.name.includes('Lab') ? 'bg-slate-50/50' : 'bg-white') : 'bg-white';
+                const borderClass = (sub.group && sub.name.includes('Theory')) ? 'border-none pb-0' : 'border-b border-slate-100';
+
+                if (isFirstInGroup) {
+                   html += `
+                    <div class="px-6 pt-4 pb-1 bg-white">
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                           ${sub.group}
+                           <span class="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded uppercase tracking-wide font-semibold">Combined 4 Cr</span>
+                        </div>
+                    </div>`;
+                }
+
+                html += `
+                <div class="px-6 py-3 grid grid-cols-12 gap-4 items-center hover:bg-slate-50 transition-colors ${rowBg} ${borderClass}">
+                    <div class="col-span-6 sm:col-span-7 pl-${sub.group ? '4' : '0'}">
+                        <div class="font-medium ${sub.group ? 'text-slate-600 text-sm' : 'text-slate-900'}">
+                            ${sub.group ? `<span class="mr-2 text-xs text-slate-400"><i class="fas ${sub.name.includes('Theory') ? 'fa-book-open' : 'fa-flask'}"></i></span>` : ''}
+                            ${displayName}
+                        </div>
+                        <div class="text-xs text-slate-400 sm:hidden mt-0.5">${sub.credits} Cr</div>
+                    </div>
+                    <div class="col-span-2 hidden sm:flex justify-center">
+                        <span class="inline-flex items-center justify-center px-2.5 py-0.5 rounded-full text-xs font-medium ${sub.group ? 'bg-slate-100 text-slate-600' : 'bg-indigo-50 text-indigo-700'}">
+                            ${sub.credits}
+                        </span>
+                    </div>
+                    <div class="col-span-6 sm:col-span-3">
+                        <select onchange="calculate()" id="grade-${sub.id}" class="grade-select w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border bg-white shadow-sm">
+                            <option value="" disabled selected>Grade</option>
+                            <option value="S">S</option>
+                            <option value="A">A</option>
+                            <option value="B">B</option>
+                            <option value="C">C</option>
+                            <option value="D">D</option>
+                            <option value="E">E</option>
+                        </select>
+                    </div>
+                </div>`;
+            });
+            container.innerHTML = html;
+        }
+
+        function toggleNextSem() {
+            const isChecked = document.getElementById('toggle-next').checked;
+            const container = document.getElementById('next-sem-container');
+            if (isChecked) {
+                container.classList.remove('hidden');
+                container.classList.add('block');
+            } else {
+                container.classList.add('hidden');
+                container.classList.remove('block');
+            }
+            calculate();
+        }
+
+        function switchTab(tabName) {
+            // Update Button Styles
+            document.getElementById('tab-btn-calculator').className = tabName === 'calculator' ? 'tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors' : 'tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors';
+            document.getElementById('tab-btn-report').className = tabName === 'report' ? 'tab-active py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors' : 'tab-inactive py-4 px-1 font-medium text-sm flex items-center gap-2 transition-colors';
+
+            // Show/Hide Views
+            document.getElementById('view-calculator').className = tabName === 'calculator' ? 'block space-y-6' : 'hidden';
+            document.getElementById('view-report').className = tabName === 'report' ? 'block' : 'hidden';
+        }
+
+        // 4. MAIN CALCULATION
+        // --------------------------------
+        function calculate() {
+            const includePrev = document.getElementById('toggle-prev').checked;
+            const includeNext = document.getElementById('toggle-next').checked;
+            const nextSemGPA10Input = parseFloat(document.getElementById('next-sem-gpa').value) || 0;
+
+            // --- A. Current Semester Stats ---
+            let currCredits = 0;
+            let currPts10 = 0;
+            let currPts4 = 0;
+
+            // Recalculate based on inputs
+            currCredits = 28; // Fixed
+            let actualFilledCredits = 0;
+            let tempCurrPts10 = 0;
+            let tempCurrPts4 = 0;
+
+            subjects.forEach(sub => {
+                const select = document.getElementById(`grade-${sub.id}`);
+                const grade = select.value;
+                if (grade && gradePoints[grade]) {
+                    tempCurrPts10 += gradePoints[grade].val10 * sub.credits;
+                    tempCurrPts4 += gradePoints[grade].val4 * sub.credits;
+                    actualFilledCredits += sub.credits;
+                }
+            });
+            
+            currPts10 = tempCurrPts10;
+            currPts4 = tempCurrPts4;
+
+            const currGPA10 = currCredits > 0 ? (currPts10 / currCredits) : 0;
+            const currGPA4 = currCredits > 0 ? (currPts4 / currCredits) : 0;
+            const currGerman = convertToGerman(currGPA10);
+
+
+            // --- B. Previous Semester Stats ---
+            // We estimate US points for previous semesters using the interpolation function on the aggregate GPA
+            const prevGPA10 = PREV_DATA.gpa10;
+            const prevGPA4Estimate = interpolateUS(prevGPA10); 
+            const prevPts4 = prevGPA4Estimate * PREV_DATA.credits;
+            const prevGerman = convertToGerman(prevGPA10);
+
+
+            // --- C. Next Semester Stats ---
+            const nextGPA10 = nextSemGPA10Input;
+            const nextGPA4 = interpolateUS(nextGPA10);
+            const nextPts10 = nextGPA10 * NEXT_SEM_CREDITS;
+            const nextPts4 = nextGPA4 * NEXT_SEM_CREDITS;
+            const nextGerman = convertToGerman(nextGPA10);
+
+
+            // --- D. Cumulative Stats (For Calculator Display) ---
+            let totalCredits = 0;
+            let totalPts10 = 0;
+            let totalPts4 = 0;
+
+            // Base: Current Sem
+            totalCredits += currCredits;
+            totalPts10 += currPts10;
+            totalPts4 += currPts4;
+
+            // If Prev Included
+            if (includePrev) {
+                totalCredits += PREV_DATA.credits;
+                totalPts10 += PREV_DATA.points10;
+                totalPts4 += prevPts4;
+            }
+
+            // If Next Included
+            if (includeNext) {
+                totalCredits += NEXT_SEM_CREDITS;
+                totalPts10 += nextPts10;
+                totalPts4 += nextPts4;
+            }
+
+            const finalGPA10 = totalCredits > 0 ? (totalPts10 / totalCredits) : 0;
+            const finalGPA4 = totalCredits > 0 ? (totalPts4 / totalCredits) : 0;
+            const finalGerman = convertToGerman(finalGPA10);
+
+            // Update Calculator View
+            animateValue("res-10", document.getElementById("res-10").textContent, finalGPA10, 500);
+            document.getElementById("res-4").textContent = finalGPA4.toFixed(2);
+            document.getElementById("res-de").textContent = finalGerman.toFixed(2);
+
+            // Color coding for German (Lower is better)
+            const deEl = document.getElementById('res-de');
+            if (finalGerman <= 1.5) deEl.className = "text-4xl font-bold text-emerald-500"; // Very Good
+            else if (finalGerman <= 2.5) deEl.className = "text-4xl font-bold text-indigo-500"; // Good
+            else if (finalGerman <= 3.5) deEl.className = "text-4xl font-bold text-yellow-500"; // Satisfactory
+            else deEl.className = "text-4xl font-bold text-red-500"; // Sufficient/Fail
+
+
+            // --- E. Update Report Table ---
+            updateReportTable({
+                prev: { credits: PREV_DATA.credits, gpa10: prevGPA10, gpa4: prevGPA4Estimate, german: prevGerman },
+                curr: { credits: currCredits, gpa10: currGPA10, gpa4: currGPA4, german: currGerman },
+                next: { credits: NEXT_SEM_CREDITS, gpa10: nextGPA10, gpa4: nextGPA4, german: nextGerman },
+                total: { credits: totalCredits, gpa10: finalGPA10, gpa4: finalGPA4, german: finalGerman },
+                flags: { prev: true, curr: true, next: includeNext } // Always show prev/curr in report, next is optional
+            });
+        }
+
+        function updateReportTable(data) {
+            const tbody = document.getElementById('report-table-body');
+            let rows = '';
+
+            // 1. Previous Sems Row
+            rows += `
+                <tr>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">Previous Semesters (1-4)</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center">${data.prev.credits}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700 text-center font-mono">${data.prev.gpa10.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700 text-center font-mono">${data.prev.gpa4.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700 text-center font-mono">${data.prev.german.toFixed(2)}</td>
+                </tr>
+            `;
+
+            // 2. Current Sem Row
+            rows += `
+                <tr class="bg-indigo-50/10">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-indigo-900 flex items-center gap-2">
+                        Current Semester 
+                        <span class="px-2 py-0.5 rounded text-[10px] bg-indigo-100 text-indigo-800 uppercase tracking-wide font-bold">Active</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center">${data.curr.credits}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-indigo-700 font-bold text-center font-mono">${data.curr.gpa10.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-emerald-700 font-bold text-center font-mono">${data.curr.gpa4.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-amber-700 font-bold text-center font-mono">${data.curr.german.toFixed(2)}</td>
+                </tr>
+            `;
+
+            // 3. Next Sem Row (If active)
+            if (data.flags.next) {
+                rows += `
+                <tr class="bg-slate-50 border-dashed border-l-4 border-l-slate-300">
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-500 italic">Next Semester (Projected)</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-400 text-center">${data.next.credits}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center font-mono">${data.next.gpa10.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center font-mono">${data.next.gpa4.toFixed(2)}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500 text-center font-mono">${data.next.german.toFixed(2)}</td>
+                </tr>
+                `;
+            }
+
+            tbody.innerHTML = rows;
+
+            // Footer Totals
+            document.getElementById('report-total-credits').textContent = data.total.credits;
+            document.getElementById('report-total-10').textContent = data.total.gpa10.toFixed(2);
+            document.getElementById('report-total-4').textContent = data.total.gpa4.toFixed(2);
+            document.getElementById('report-total-de').textContent = data.total.german.toFixed(2);
+        }
+
+        function animateValue(id, startStr, end, duration) {
+            let start = parseFloat(startStr);
+            if (isNaN(start)) start = 0;
+            if (start === end) return;
+            const range = end - start;
+            const obj = document.getElementById(id);
+            const startTime = new Date().getTime();
+            
+            const timer = setInterval(function() {
+                const now = new Date().getTime();
+                const remaining = Math.max((startTime + duration - now) / duration, 0);
+                const value = end - (remaining * range);
+                obj.innerHTML = value.toFixed(2);
+                if (remaining === 0) {
+                    clearInterval(timer);
+                    obj.innerHTML = end.toFixed(2);
+                }
+            }, 10);
+        }
+
+        function resetForm() {
+            const selects = document.querySelectorAll('select');
+            selects.forEach(s => s.selectedIndex = 0);
+            document.getElementById('toggle-prev').checked = false;
+            document.getElementById('toggle-next').checked = false;
+            toggleNextSem();
+            calculate();
+        }
+
+        renderSubjects();
+        calculate();
+    </script>
+</body>
+</html>
