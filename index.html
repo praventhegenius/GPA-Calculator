@@ -245,6 +245,10 @@
             return 0.0;
         };
 
+        const convertTo4Scale = (gpa10) => {
+            return interpolateUS(gpa10);
+        };
+
         const calculateSemesterStats = (subjects) => {
             let credits = 0, pts10 = 0, pts4 = 0;
             subjects.forEach(sub => {
@@ -263,10 +267,284 @@
             };
         };
 
+        // --- COURSE PLANNER CONSTANTS ---
+        const CREDIT_REQUIREMENTS = {
+            FC: { required: 53, max: 53 },
+            DLES: { required: 12, max: 12 },
+            DC: { required: 47, max: 47 },
+            DE: { required: 15, max: 15 },
+            OE: { required: 15, max: 15 },
+            PI: { required: 9, max: 9 },
+            NGCR: { required: 11, max: 11 },
+            BC: { required: 0, max: 0 },
+            TOTAL: { required: 162, max: null }
+        };
+
+        const ELECTIVE_TOTAL_REQUIREMENT = 30; // DE + OE + ME must equal 30
+
+        const SEMESTER_LIMITS = {
+            base: 27.5,
+            withNPTEL: 30.5,
+            ngcrPerSemester: {
+                1: 1.0,
+                2: 2.0,
+                3: 2.0,
+                4: 2.0,
+                5: 2.0
+            }
+        };
+
+        // --- COURSE CATALOG LOADING ---
+        const loadCourseCatalog = async () => {
+            try {
+                const response = await fetch('course_catalog.csv');
+                const text = await response.text();
+                const lines = text.split('\n').slice(1); // Skip header
+
+                const catalog = {
+                    FC: [],
+                    DLES: [],
+                    DC: [],
+                    DE: [],
+                    OE: [],
+                    PI: [],
+                    NGCR: [],
+                    BC: []
+                };
+
+                lines.forEach(line => {
+                    if (!line.trim()) return;
+
+                    const parts = line.split(',');
+                    if (parts.length < 9) return;
+
+                    const course = {
+                        category: parts[0],
+                        code: parts[1],
+                        title: parts[2],
+                        credits: parseFloat(parts[3]),
+                        type: parts[4],
+                        isNPTEL: parts[5] === 'true',
+                        spansSemesters: parseInt(parts[6]) || 1,
+                        countsTowardLimit: parts[7] === 'true',
+                        semester: parts[8] ? parseInt(parts[8]) : null,
+                        notes: parts[9] || ''
+                    };
+
+                    // Skip excluded courses
+                    if (course.notes.includes('EXCLUDED')) return;
+
+                    if (catalog[course.category]) {
+                        catalog[course.category].push(course);
+                    }
+                });
+
+                return catalog;
+            } catch (error) {
+                console.error('Failed to load course catalog:', error);
+                return null;
+            }
+        };
+
+        // --- CREDIT CALCULATION HELPERS ---
+        const calculateCompletedCategoryCredits = (completedSemesters) => {
+            const categoryCredits = {
+                FC: 0,
+                DLES: 0,
+                DC: 0,
+                DE: 0,
+                OE: 0,
+                PI: 0,
+                NGCR: 0,
+                BC: 0
+            };
+
+            completedSemesters.forEach(sem => {
+                sem.subjects.forEach(subject => {
+                    // Try to determine category from course code prefix
+                    const code = subject.code || '';
+                    let category = null;
+
+                    // Map course code prefixes to categories
+                    if (code.startsWith('BCHY') || code.startsWith('BCSE2') || code.startsWith('BCSE3') && subject.type === 'Theory Only') {
+                        category = 'FC';
+                    } else if (code.startsWith('BECE') || code.startsWith('BMAT')) {
+                        category = 'DLES';
+                    } else if (code.startsWith('BCSE') && !code.startsWith('BCSE3')) {
+                        category = 'DC';
+                    } else if (code.startsWith('CFOC') || code.startsWith('BHLM') || code.startsWith('BENG')) {
+                        category = 'OE';
+                    } else if (code.includes('J')) {
+                        category = 'PI';
+                    } else if (code.endsWith('N')) {
+                        category = 'NGCR';
+                    }
+
+                    if (category && categoryCredits[category] !== undefined) {
+                        categoryCredits[category] += subject.credits || 0;
+                    }
+                });
+            });
+
+            return categoryCredits;
+        };
+
+        const validateSemesterCredits = (courses, semesterNumber) => {
+            let totalCredits = 0;
+            let regularCredits = 0;
+            let hasNPTEL = false;
+            let hasBEXC100N = false;
+            let projectCredits = 0;
+            const warnings = [];
+
+            courses.forEach(course => {
+                totalCredits += course.credits;
+
+                if (course.isNPTEL) {
+                    hasNPTEL = true;
+                } else if (course.code === 'BEXC100N') {
+                    hasBEXC100N = true;
+                } else if (course.category === 'PI') {
+                    projectCredits += course.credits;
+                } else if (course.countsTowardLimit) {
+                    regularCredits += course.credits;
+                }
+            });
+
+            // Check base limit (27.5)
+            if (regularCredits > SEMESTER_LIMITS.base) {
+                warnings.push(`Regular credits (${regularCredits}) exceed semester limit of ${SEMESTER_LIMITS.base}`);
+            }
+
+            // Check NPTEL exception
+            if (hasNPTEL && totalCredits > SEMESTER_LIMITS.withNPTEL) {
+                warnings.push(`Total credits with NPTEL (${totalCredits}) exceed limit of ${SEMESTER_LIMITS.withNPTEL}`);
+            }
+
+            // Check NGCR allocation
+            const ngcrRequired = SEMESTER_LIMITS.ngcrPerSemester[semesterNumber] || 0;
+            if (ngcrRequired > 0) {
+                const ngcrCredits = courses.filter(c => c.category === 'NGCR').reduce((sum, c) => sum + c.credits, 0);
+                if (ngcrCredits < ngcrRequired) {
+                    warnings.push(`NGCR credits (${ngcrCredits}) below required ${ngcrRequired} for semester ${semesterNumber}`);
+                }
+            }
+
+            return {
+                totalCredits,
+                regularCredits,
+                projectCredits,
+                hasNPTEL,
+                hasBEXC100N,
+                warnings,
+                isValid: warnings.length === 0
+            };
+        };
+
+        const getCourseRecommendations = (completedCredits, courseCatalog) => {
+            const recommendations = [];
+
+            Object.keys(CREDIT_REQUIREMENTS).forEach(category => {
+                if (category === 'TOTAL') return;
+
+                const required = CREDIT_REQUIREMENTS[category].required;
+                const completed = completedCredits[category] || 0;
+                const remaining = required - completed;
+
+                if (remaining > 0) {
+                    recommendations.push({
+                        category,
+                        remaining,
+                        message: `You need ${remaining} more credits in ${category}`,
+                        courses: courseCatalog[category] || []
+                    });
+                }
+            });
+
+            // Check DE + OE total
+            const deCompleted = completedCredits.DE || 0;
+            const oeCompleted = completedCredits.OE || 0;
+            const electiveTotal = deCompleted + oeCompleted;
+            const electiveRemaining = ELECTIVE_TOTAL_REQUIREMENT - electiveTotal;
+
+            if (electiveRemaining > 0) {
+                recommendations.push({
+                    category: 'ELECTIVES',
+                    remaining: electiveRemaining,
+                    message: `You need ${electiveRemaining} more elective credits (DE + OE must equal ${ELECTIVE_TOTAL_REQUIREMENT})`,
+                    courses: []
+                });
+            }
+
+            return recommendations;
+        };
+
         // --- PARSING LOGIC ---
         const parseGradeHistory = (text) => {
             const semesterGroups = {};
+            const metadata = {
+                basketDetails: [],
+                cgpaDetails: null,
+                curriculumDetails: []
+            };
 
+            // === EXTRACT BASKET DETAILS ===
+            // Format: "Basket Title | Distribution Type | Credits Required | Credits Earned"
+            // Example: "B.Tech. Foreign Language - 2021onwards FC 2.0 0.0"
+            const basketRegex = /([A-Za-z0-9\s.\/\-()]+?)\s+(FC|NGCR|OC|ETL|TH|LO|SS|PJT)\s+([\d.]+)\s+([\d.]+)/g;
+            const basketMatches = text.matchAll(basketRegex);
+
+            for (const match of basketMatches) {
+                const [_, title, distributionType, creditsRequired, creditsEarned] = match;
+                // Filter out course entries (they have course codes like BMAT205L)
+                if (!title.match(/^[A-Z]{3,4}\d{3,4}/)) {
+                    metadata.basketDetails.push({
+                        title: title.trim(),
+                        distributionType,
+                        creditsRequired: parseFloat(creditsRequired),
+                        creditsEarned: parseFloat(creditsEarned)
+                    });
+                }
+            }
+
+            // === EXTRACT CGPA DETAILS ===
+            // Format: "Credits Registered | Credits Earned | CGPA | S Grades | A Grades | B Grades | C Grades | D Grades | E Grades | F Grades | N Grades"
+            // Example: "96.0 96.0 8.61 10 11 15 3 0 0 0 0"
+            const cgpaRegex = /([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)/;
+            const cgpaMatch = text.match(cgpaRegex);
+
+            if (cgpaMatch) {
+                metadata.cgpaDetails = {
+                    creditsRegistered: parseFloat(cgpaMatch[1]),
+                    creditsEarned: parseFloat(cgpaMatch[2]),
+                    cgpa: parseFloat(cgpaMatch[3]),
+                    sGrades: parseInt(cgpaMatch[4]),
+                    aGrades: parseInt(cgpaMatch[5]),
+                    bGrades: parseInt(cgpaMatch[6]),
+                    cGrades: parseInt(cgpaMatch[7]),
+                    dGrades: parseInt(cgpaMatch[8]),
+                    eGrades: parseInt(cgpaMatch[9]),
+                    fGrades: parseInt(cgpaMatch[10]),
+                    nGrades: parseInt(cgpaMatch[11])
+                };
+            }
+
+            // === EXTRACT CURRICULUM DETAILS ===
+            // Format: "Curriculum Distribution Type | Credits Required | Credits Earned"
+            // Example: "Foundation Core 53.0 54.0"
+            const curriculumRegex = /(Foundation Core|Discipline-linked Engineering Sciences|Discipline Core|Discipline Elective|Projects and Internship|Open Elective|Bridge Course|Non-graded Core Requirement|Multidisciplinary Elective|Total Credits)\s+([\d.]+)\s+([\d.]+)/g;
+            const curriculumMatches = text.matchAll(curriculumRegex);
+
+            for (const match of curriculumMatches) {
+                const [_, type, creditsRequired, creditsEarned] = match;
+                metadata.curriculumDetails.push({
+                    type: type.trim(),
+                    creditsRequired: parseFloat(creditsRequired),
+                    creditsEarned: parseFloat(creditsEarned)
+                });
+            }
+
+            // === EXTRACT COURSE DETAILS ===
             // Regex for extracting course details
             // Format: Code | Title | Type | Credits | Grade | Exam Month
             // Example: "BCHY101L Engineering Chemistry TH 3.0 C Dec-2023"
@@ -359,20 +637,32 @@
                 if (!semesterGroups[semId]) {
                     semesterGroups[semId] = {
                         id: Date.now() + semId,
+                        semesterNumber: semId,
                         name: `Semester ${semId} (${course.examMonth})`,
-                        subjects: []
+                        subjects: [],
+                        isCompleted: true
                     };
                 }
 
                 semesterGroups[semId].subjects.push({
                     id: course.id,
+                    code: course.code,
                     name: course.name,
                     credits: course.credits,
-                    grade: course.grade
+                    grade: course.grade,
+                    examMonth: course.examMonth,
+                    type: course.type
                 });
             });
 
-            return Object.values(semesterGroups).sort((a, b) => a.name.localeCompare(b.name));
+            // Calculate CGPA for each semester
+            const semesters = Object.values(semesterGroups).sort((a, b) => a.semesterNumber - b.semesterNumber);
+            semesters.forEach(sem => {
+                const stats = calculateSemesterStats(sem.subjects);
+                sem.cgpa = stats.gpa10;
+            });
+
+            return { semesters, metadata };
         };
 
         const extractTextFromPDF = async (file) => {
@@ -417,7 +707,7 @@
                     const text = await extractTextFromPDF(file);
                     const parsed = parseGradeHistory(text);
 
-                    if (parsed.length === 0) {
+                    if (!parsed.semesters || parsed.semesters.length === 0) {
                         setError('No valid courses found. Please ensure this is a valid Grade History PDF.');
                     } else {
                         setPreviewData(parsed);
@@ -503,15 +793,21 @@
                                 </div>
                             ) : (
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="font-bold text-slate-700">Preview Import</h4>
-                                        <span className="text-xs font-bold bg-emerald-100 text-emerald-700 px-2 py-1 rounded-lg">
-                                            {previewData.reduce((acc, sem) => acc + sem.subjects.length, 0)} Courses Found
-                                        </span>
+                                    <div className="bg-green-50 p-4 rounded-xl text-green-700 text-sm flex gap-3 items-center">
+                                        <i className="ph-fill ph-check-circle text-lg"></i>
+                                        <div>
+                                            <p className="font-bold">Successfully parsed {previewData.semesters.length} semester(s)</p>
+                                            {previewData.metadata.cgpaDetails && (
+                                                <p className="text-xs opacity-90 mt-1">
+                                                    CGPA: {previewData.metadata.cgpaDetails.cgpa} |
+                                                    Credits: {previewData.metadata.cgpaDetails.creditsEarned}/{previewData.metadata.cgpaDetails.creditsRegistered}
+                                                </p>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="space-y-3">
-                                        {previewData.map((sem, idx) => (
-                                            <div key={idx} className="border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+                                    <div className="bg-slate-50 p-4 rounded-xl space-y-3 max-h-64 overflow-y-auto">
+                                        {previewData.semesters.map((sem, idx) => (
+                                            <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200">
                                                 <div className="flex justify-between items-center mb-2">
                                                     <span className="font-bold text-slate-700 text-sm">{sem.name}</span>
                                                     <span className="text-xs text-slate-500">{sem.subjects.length} courses</span>
@@ -802,16 +1098,22 @@
             </div>
         );
 
-        const SubjectRow = ({ subject, onUpdate, onDelete, index }) => (
+        const SubjectRow = ({ subject, onUpdate, onDelete, index, catalog }) => (
             <div
                 className="group flex items-center gap-4 p-4 bg-white/50 hover:bg-white rounded-xl border border-transparent hover:border-primary-100 hover:shadow-md transition-all duration-300 animate-fade-in"
                 style={{ animationDelay: `${index * 50}ms` }}
             >
                 <div className="flex-grow">
-                    <input
-                        type="text"
+                    <CourseSearchInput
                         value={subject.name}
-                        onChange={(e) => onUpdate(subject.id, 'name', e.target.value)}
+                        onChange={(val) => onUpdate(subject.id, 'name', val)}
+                        onSelect={(course) => {
+                            setTimeout(() => {
+                                onUpdate(subject.id, 'name', course.title);
+                                onUpdate(subject.id, 'credits', course.credits);
+                            }, 0);
+                        }}
+                        catalog={catalog}
                         placeholder="Course Name"
                         className="w-full text-base font-medium text-slate-700 placeholder-slate-400 bg-transparent border-none focus:ring-0 p-0"
                     />
@@ -849,7 +1151,7 @@
             </div>
         );
 
-        const ProfileSemester = ({ semester, onUpdateName, onDelete, onUpdateSubjects, index }) => {
+        const ProfileSemester = ({ semester, onUpdateName, onDelete, onUpdateSubjects, index, catalog }) => {
             const stats = useMemo(() => calculateSemesterStats(semester.subjects), [semester.subjects]);
             const [isExpanded, setIsExpanded] = useState(true);
 
@@ -868,7 +1170,7 @@
 
             return (
                 <div
-                    className="glass-card rounded-2xl overflow-hidden mb-6 animate-slide-up"
+                    className="glass-card rounded-2xl mb-6 animate-slide-up"
                     style={{ animationDelay: `${index * 100}ms` }}
                 >
                     <div className="px-6 py-4 bg-white/40 border-b border-white/40 flex items-center justify-between backdrop-blur-sm">
@@ -911,7 +1213,7 @@
                         <div className="p-6 bg-white/20">
                             <div className="space-y-2">
                                 {semester.subjects.map((sub, idx) => (
-                                    <SubjectRow key={sub.id} subject={sub} onUpdate={handleSubjectUpdate} onDelete={handleSubjectDelete} index={idx} />
+                                    <SubjectRow key={sub.id} subject={sub} onUpdate={handleSubjectUpdate} onDelete={handleSubjectDelete} index={idx} catalog={catalog} />
                                 ))}
                             </div>
                             <button onClick={addSubject} className="mt-4 w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-500 text-sm font-medium hover:border-primary-400 hover:text-primary-600 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2">
@@ -924,206 +1226,1425 @@
         };
 
         // --- VIEWS (Moved outside App to prevent remounting) ---
-        const CalculatorView = ({
-            currentSemSubjects, setCurrentSemSubjects,
-            currentStats,
-            config, setConfig,
-            profileSemesters,
-            totals,
-            historyStats,
-            handleExportCSV, handleImportCSV,
-            setView
-        }) => {
-            const handleDecrementTarget = () => {
-                const newVal = Math.max(0, (config.nextTarget - 0.1).toFixed(1));
-                setConfig({ ...config, nextTarget: parseFloat(newVal) });
-            };
-            const handleIncrementTarget = () => {
-                const newVal = Math.min(10, (config.nextTarget + 0.1).toFixed(1));
-                setConfig({ ...config, nextTarget: parseFloat(newVal) });
-            };
+        // --- CURRICULUM VIEW ---
+        const CurriculumView = ({ courseCatalog }) => {
+            const [search, setSearch] = useState('');
+            const [filter, setFilter] = useState('All');
+
+            const allCourses = useMemo(() => {
+                if (!courseCatalog) return [];
+                return Object.values(courseCatalog).flat();
+            }, [courseCatalog]);
+
+            const categories = ['All', ...new Set(allCourses.map(c => c.category))];
+
+            const filteredCourses = allCourses.filter(c => {
+                const matchesSearch = c.title.toLowerCase().includes(search.toLowerCase()) ||
+                    c.code.toLowerCase().includes(search.toLowerCase());
+                const matchesFilter = filter === 'All' || c.category === filter;
+                return matchesSearch && matchesFilter;
+            });
 
             return (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                    <div className="lg:col-span-7 space-y-8">
-                        {/* Current Sem Card */}
-                        <div className="glass-card rounded-3xl overflow-hidden animate-slide-up" style={{ animationDelay: '100ms' }}>
-                            <div className="px-8 py-6 border-b border-white/40 flex justify-between items-center bg-white/30 backdrop-blur-md">
-                                <div>
-                                    <h2 className="font-bold text-slate-800 text-lg">Current Semester</h2>
-                                    <p className="text-xs text-slate-500">Project your current performance</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Credits</span>
-                                    <span className="text-sm font-mono font-bold text-slate-700 bg-white/50 px-3 py-1 rounded-lg border border-white/50">
-                                        {currentStats.credits}
-                                    </span>
-                                </div>
-                            </div>
-                            <div className="p-8 space-y-4">
-                                {currentSemSubjects.map((s, idx) => (
-                                    <SubjectRow
-                                        key={s.id}
-                                        subject={s}
-                                        onUpdate={(id, f, v) => setCurrentSemSubjects(prev => prev.map(sub => sub.id === id ? { ...sub, [f]: v } : sub))}
-                                        onDelete={(id) => setCurrentSemSubjects(prev => prev.filter(sub => sub.id !== id))}
-                                        index={idx}
-                                    />
-                                ))}
-                                <button onClick={() => setCurrentSemSubjects([...currentSemSubjects, { id: Date.now(), name: '', credits: 3, grade: '' }])} className="w-full py-4 border border-dashed border-slate-300 rounded-xl text-slate-500 text-sm font-medium hover:border-primary-500 hover:text-primary-600 hover:bg-primary-50/50 transition-all flex items-center justify-center gap-2 mt-6 group">
-                                    <div className="w-6 h-6 rounded-full bg-slate-100 group-hover:bg-primary-100 flex items-center justify-center transition-colors">
-                                        <i className="ph-bold ph-plus"></i>
-                                    </div>
-                                    Add Course
-                                </button>
-                            </div>
+                <div className="max-w-6xl mx-auto animate-fade-in">
+                    <div className="flex justify-between items-end mb-8">
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Curriculum</h2>
+                            <p className="text-slate-500">Explore the complete course catalog.</p>
                         </div>
-
-                        {/* Prediction Config */}
-                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '200ms' }}>
-                            <div className="flex items-center justify-between mb-6">
-                                <div>
-                                    <span className="text-lg font-bold text-slate-800 block">Future Projection</span>
-                                    <span className="text-xs text-slate-500">Include next semester in calculations</span>
-                                </div>
-                                <label className="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" className="sr-only peer" checked={config.includeNext} onChange={(e) => setConfig({ ...config, includeNext: e.target.checked })} />
-                                    <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary-600 shadow-inner"></div>
-                                </label>
+                        <div className="flex gap-3">
+                            <div className="relative">
+                                <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                <input
+                                    type="text"
+                                    placeholder="Search courses..."
+                                    value={search}
+                                    onChange={(e) => setSearch(e.target.value)}
+                                    className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary-500 w-64"
+                                />
                             </div>
-                            {config.includeNext && (
-                                <div className="grid grid-cols-2 gap-6 animate-fade-in">
-                                    <div className="bg-white/40 p-4 rounded-xl border border-white/50">
-                                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Est. Credits</label>
-                                        <input type="number" value={config.nextCredits} onChange={(e) => setConfig({ ...config, nextCredits: parseFloat(e.target.value) })} className="w-full text-lg font-mono bg-transparent border-b-2 border-slate-200 focus:border-primary-500 focus:outline-none py-1 transition-colors text-slate-700" />
-                                    </div>
-                                    <div className="bg-white/40 p-4 rounded-xl border border-white/50">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Target GPA</label>
-                                            <span className="text-sm font-bold font-mono text-primary-600">{config.nextTarget}</span>
-                                        </div>
-                                        <div className="flex items-center gap-3">
-                                            <button onClick={handleDecrementTarget} className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-primary-600 hover:border-primary-300 flex items-center justify-center transition-colors">
-                                                <i className="ph-bold ph-minus"></i>
-                                            </button>
-                                            <input
-                                                type="range"
-                                                min="0"
-                                                max="10"
-                                                step="0.1"
-                                                value={config.nextTarget}
-                                                onChange={(e) => setConfig({ ...config, nextTarget: parseFloat(e.target.value) })}
-                                                className="flex-grow accent-primary-600 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                                            />
-                                            <button onClick={handleIncrementTarget} className="w-8 h-8 rounded-lg bg-white border border-slate-200 text-slate-500 hover:text-primary-600 hover:border-primary-300 flex items-center justify-center transition-colors">
-                                                <i className="ph-bold ph-plus"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                            <div className="flex gap-2">
+                                {categories.map(cat => (
+                                    <button
+                                        key={cat}
+                                        onClick={() => setFilter(cat)}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${filter === cat
+                                            ? 'bg-primary-600 text-white shadow-lg'
+                                            : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
+                                            }`}
+                                    >
+                                        {cat}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="lg:col-span-5 space-y-8">
-                        {/* Analytics Chart */}
-                        <AnalyticsCard history={profileSemesters} current={currentSemSubjects} />
-
-                        {/* Stats */}
-                        <div className="space-y-5">
-                            <MetricCard label="Cumulative CGPA" value={totals.gpa10.toFixed(2)} subValue="/ 10" colorClass="text-primary-600" icon="ph-chart-bar" delay={300} />
-                            <div className="grid grid-cols-2 gap-5">
-                                <MetricCard label="US GPA" value={totals.gpa4.toFixed(2)} colorClass="text-emerald-600" icon="ph-globe" delay={400} />
-                                <MetricCard label="German" value={totals.german.toFixed(2)} colorClass="text-amber-600" icon="ph-translate" delay={500} />
-                            </div>
-                        </div>
-
-                        {/* History Summary Card */}
-                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '600ms' }}>
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-sm font-bold text-slate-800">Academic History</h3>
-                                <button onClick={() => setView('profile')} className="text-xs font-medium text-primary-600 hover:text-primary-700 hover:bg-primary-50 px-3 py-1.5 rounded-lg transition-colors">Manage Profile</button>
-                            </div>
-
-                            {historyStats.credits > 0 ? (
-                                <div className="bg-white/40 rounded-2xl p-5 border border-white/50 flex items-center justify-between">
-                                    <div>
-                                        <div className="text-3xl font-bold text-slate-700 tracking-tight">{historyStats.credits}</div>
-                                        <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Total Credits</div>
+                    <div className="space-y-3">
+                        {filteredCourses.length > 0 ? (
+                            filteredCourses.map(course => (
+                                <div key={course.code} className="bg-white rounded-xl p-4 flex justify-between items-center shadow-sm border border-slate-100 hover:shadow-md transition-all">
+                                    <div className="flex-grow">
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                                {course.code}
+                                            </span>
+                                            <span className="font-bold text-slate-800 text-lg">{course.title}</span>
+                                            {course.isNPTEL && (
+                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold">
+                                                    NPTEL
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
+                                            <span className="px-2 py-0.5 bg-slate-50 rounded border border-slate-100 font-bold text-xs">{course.category}</span>
+                                            <span>•</span>
+                                            <span>{course.credits} credits</span>
+                                            <span>•</span>
+                                            <span>{course.type}</span>
+                                        </div>
+                                        {course.notes && (
+                                            <p className="text-xs text-slate-400 italic mt-2">{course.notes}</p>
+                                        )}
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-xl font-mono font-bold text-slate-600">{(historyStats.pts10 / historyStats.credits).toFixed(2)}</div>
-                                        <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Avg GPA</div>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">
+                                            <i className="ph-bold ph-book-open"></i>
+                                        </div>
                                     </div>
                                 </div>
-                            ) : (
-                                <div className="text-center py-8 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-                                    <p className="text-sm text-slate-400 mb-2">No history added yet</p>
-                                    <button onClick={() => setView('profile')} className="text-sm text-primary-600 font-medium hover:underline">Add your past semesters</button>
+                            ))
+                        ) : (
+                            <div className="text-center py-20 bg-white rounded-3xl border-dashed border-2 border-slate-200">
+                                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300 text-2xl">
+                                    <i className="ph-bold ph-magnifying-glass"></i>
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Reverse Calculator */}
-                        <TargetCalculator currentCGPA={totals.gpa10} currentCredits={totals.credits} />
-
-                        {/* Data Actions */}
-                        <div className="flex gap-4 animate-slide-up" style={{ animationDelay: '700ms' }}>
-                            <button onClick={handleExportCSV} className="flex-1 py-3 glass-card rounded-xl text-sm font-medium text-slate-600 hover:text-primary-600 hover:bg-white transition-all flex items-center justify-center gap-2">
-                                <i className="ph-bold ph-download-simple"></i> Export
-                            </button>
-                            <label className="flex-1 py-3 glass-card rounded-xl text-sm font-medium text-slate-600 hover:text-primary-600 hover:bg-white transition-all flex items-center justify-center gap-2 cursor-pointer">
-                                <i className="ph-bold ph-upload-simple"></i> Import CSV
-                                <input type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
-                            </label>
-                        </div>
+                                <h3 className="text-lg font-bold text-slate-700 mb-1">No courses found</h3>
+                                <p className="text-slate-500">Try adjusting your search or filter.</p>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         };
 
-        const ProfileView = ({ profileSemesters, setProfileSemesters, setIsImportModalOpen }) => (
-            <div className="max-w-4xl mx-auto animate-fade-in">
-                <div className="flex justify-between items-end mb-8">
-                    <div>
-                        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Student Profile</h2>
-                        <p className="text-slate-500">Build your academic history semester by semester.</p>
-                    </div>
-                    <div className="flex gap-3">
-                        <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-slate-600 hover:text-primary-600 hover:bg-slate-50 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm border border-slate-200 transition-all">
-                            <i className="ph-bold ph-magic-wand"></i> Smart Import
-                        </button>
-                        <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="btn-primary px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
-                            <i className="ph-bold ph-plus"></i> Add Semester
-                        </button>
-                    </div>
-                </div>
+        // --- GRADE SHEET VIEW ---
+        const GradeSheetView = ({ completedSemesters, gradeSheetMetadata }) => {
+            const [expandedSemesters, setExpandedSemesters] = useState({});
+            const [selectedCurriculum, setSelectedCurriculum] = useState(null);
 
-                {profileSemesters.length === 0 ? (
-                    <div className="text-center py-20 glass-card rounded-3xl border-dashed border-2 border-slate-300/50">
-                        <div className="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-6 text-primary-400 text-3xl shadow-inner">
-                            <i className="ph-fill ph-books"></i>
+            const toggleSemester = (semId) => {
+                setExpandedSemesters(prev => ({
+                    ...prev,
+                    [semId]: !prev[semId]
+                }));
+            };
+
+            if (completedSemesters.length === 0) {
+                return (
+                    <div className="flex flex-col items-center justify-center py-20 px-4">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                            <i className="ph-bold ph-file-text text-4xl text-slate-400"></i>
                         </div>
-                        <h3 className="text-xl font-bold text-slate-800 mb-2">Start Your Journey</h3>
-                        <p className="text-slate-500 mb-6 max-w-md mx-auto">Add your previous semesters to unlock powerful insights and accurate predictions.</p>
-                        <button onClick={() => setProfileSemesters([{ id: Date.now(), name: 'Semester 1', subjects: [] }])} className="text-primary-600 font-bold hover:underline">Create your first semester</button>
+                        <h3 className="text-xl font-bold text-slate-700 mb-2">No Grade Sheet Imported</h3>
+                        <p className="text-slate-500 text-center max-w-md mb-6">
+                            Upload your grade sheet PDF to view detailed semester information, basket details, and curriculum progress.
+                        </p>
                     </div>
-                ) : (
-                    <div className="space-y-6">
-                        {profileSemesters.map((sem, idx) => (
-                            <ProfileSemester
-                                key={sem.id}
-                                semester={sem}
-                                onUpdateName={(id, val) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, name: val } : s))}
-                                onUpdateSubjects={(id, subs) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, subjects: subs } : s))}
-                                onDelete={(id) => setProfileSemesters(prev => prev.filter(s => s.id !== id))}
-                                index={idx}
-                            />
+                );
+            }
+
+            return (
+                <div className="space-y-8">
+                    {/* Curriculum Drill-down Modal */}
+                    {selectedCurriculum && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-in" onClick={() => setSelectedCurriculum(null)}>
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                                <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                                    <h3 className="text-xl font-bold text-slate-800">{selectedCurriculum} Courses</h3>
+                                    <button onClick={() => setSelectedCurriculum(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+                                        <i className="ph-bold ph-x"></i>
+                                    </button>
+                                </div>
+                                <div className="p-6 overflow-y-auto">
+                                    <table className="w-full text-sm">
+                                        <thead>
+                                            <tr className="border-b border-slate-200">
+                                                <th className="text-left py-2 font-bold text-slate-500">Code</th>
+                                                <th className="text-left py-2 font-bold text-slate-500">Course</th>
+                                                <th className="text-center py-2 font-bold text-slate-500">Credits</th>
+                                                <th className="text-center py-2 font-bold text-slate-500">Grade</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {completedSemesters.flatMap(s => s.subjects).filter(s => s.type === selectedCurriculum).length > 0 ? (
+                                                completedSemesters.flatMap(s => s.subjects).filter(s => s.type === selectedCurriculum).map((sub, idx) => (
+                                                    <tr key={idx} className="border-b border-slate-50 last:border-none">
+                                                        <td className="py-3 font-mono text-slate-600">{sub.code}</td>
+                                                        <td className="py-3 font-bold text-slate-700">{sub.name}</td>
+                                                        <td className="py-3 text-center text-slate-600">{sub.credits}</td>
+                                                        <td className="py-3 text-center">
+                                                            <span className={`font-bold px-2 py-1 rounded text-xs ${sub.grade === 'S' ? 'bg-green-100 text-green-700' :
+                                                                sub.grade === 'A' ? 'bg-blue-100 text-blue-700' :
+                                                                    sub.grade === 'B' ? 'bg-cyan-100 text-cyan-700' :
+                                                                        sub.grade === 'C' ? 'bg-yellow-100 text-yellow-700' :
+                                                                            sub.grade === 'D' ? 'bg-orange-100 text-orange-700' :
+                                                                                sub.grade === 'E' ? 'bg-purple-100 text-purple-700' :
+                                                                                    'bg-slate-100 text-slate-700'
+                                                                }`}>{sub.grade}</span>
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="4" className="py-8 text-center text-slate-500">
+                                                        No courses found for this category.
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Header */}
+                    <div className="glass-card rounded-3xl p-8 animate-slide-up">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800">Grade Sheet</h2>
+                                <p className="text-slate-500 text-sm">Detailed view of your academic progress</p>
+                            </div>
+                            {gradeSheetMetadata.cgpaDetails && (
+                                <div className="text-right">
+                                    <div className="text-4xl font-bold text-primary-600 font-mono">
+                                        {gradeSheetMetadata.cgpaDetails.cgpa.toFixed(2)}
+                                    </div>
+                                    <div className="text-xs text-slate-500 uppercase tracking-wider">Overall CGPA</div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* CGPA Details */}
+                        {gradeSheetMetadata.cgpaDetails && (
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-white/50 rounded-xl">
+                                <div>
+                                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Credits Registered</div>
+                                    <div className="text-lg font-bold text-slate-700 font-mono">
+                                        {gradeSheetMetadata.cgpaDetails.creditsRegistered}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">Credits Earned</div>
+                                    <div className="text-lg font-bold text-slate-700 font-mono">
+                                        {gradeSheetMetadata.cgpaDetails.creditsEarned}
+                                    </div>
+                                </div>
+                                <div className="col-span-2">
+                                    <div className="text-xs text-slate-500 uppercase tracking-wider mb-2">Grade Distribution</div>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {['S', 'A', 'B', 'C', 'D', 'E', 'F', 'N'].map(grade => {
+                                            const count = gradeSheetMetadata.cgpaDetails[`${grade.toLowerCase()}Grades`];
+                                            return count > 0 ? (
+                                                <span key={grade} className="text-xs font-mono bg-white px-2 py-1 rounded border border-slate-200">
+                                                    {grade}: {count}
+                                                </span>
+                                            ) : null;
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Semesters */}
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-bold text-slate-800 px-2">Completed Semesters</h3>
+                        {completedSemesters.map((sem, idx) => (
+                            <div key={sem.id} className="glass-card rounded-2xl overflow-hidden animate-slide-up" style={{ animationDelay: `${idx * 50}ms` }}>
+                                {/* Semester Header */}
+                                <button
+                                    onClick={() => toggleSemester(sem.id)}
+                                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-white/30 transition-colors"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-10 h-10 bg-primary-100 text-primary-600 rounded-xl flex items-center justify-center font-bold">
+                                            {sem.semesterNumber}
+                                        </div>
+                                        <div className="text-left">
+                                            <div className="font-bold text-slate-800">{sem.name}</div>
+                                            <div className="text-xs text-slate-500">{sem.subjects.length} courses</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-6">
+                                        <div className="text-right">
+                                            <div className="text-2xl font-bold text-primary-600 font-mono">
+                                                {sem.cgpa.toFixed(2)}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 uppercase tracking-wider">CGPA</div>
+                                        </div>
+                                        <i className={`ph-bold ${expandedSemesters[sem.id] ? 'ph-caret-up' : 'ph-caret-down'} text-slate-400 text-xl`}></i>
+                                    </div>
+                                </button>
+
+                                {/* Semester Details (Expandable) */}
+                                {expandedSemesters[sem.id] && (
+                                    <div className="px-6 pb-6 pt-2 border-t border-white/40 bg-white/20 animate-fade-in">
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm">
+                                                <thead>
+                                                    <tr className="border-b border-slate-200">
+                                                        <th className="text-left py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Code</th>
+                                                        <th className="text-left py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Course Title</th>
+                                                        <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                                                        <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Credits</th>
+                                                        <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Grade</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {sem.subjects.map((sub, subIdx) => (
+                                                        <tr key={sub.id} className="border-b border-slate-100 hover:bg-white/30 transition-colors">
+                                                            <td className="py-3 px-2 font-mono text-xs text-slate-600">{sub.code}</td>
+                                                            <td className="py-3 px-2 text-slate-700">{sub.name}</td>
+                                                            <td className="py-3 px-2 text-center">
+                                                                <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                                                    {sub.type}
+                                                                </span>
+                                                            </td>
+                                                            <td className="py-3 px-2 text-center font-mono text-slate-700">{sub.credits}</td>
+                                                            <td className="py-3 px-2 text-center">
+                                                                <span className={`font-bold text-sm px-3 py-1 rounded-lg ${sub.grade === 'S' ? 'bg-green-100 text-green-700' :
+                                                                    sub.grade === 'A' ? 'bg-blue-100 text-blue-700' :
+                                                                        sub.grade === 'B' ? 'bg-cyan-100 text-cyan-700' :
+                                                                            sub.grade === 'C' ? 'bg-yellow-100 text-yellow-700' :
+                                                                                sub.grade === 'D' ? 'bg-orange-100 text-orange-700' :
+                                                                                    sub.grade === 'F' ? 'bg-red-100 text-red-700' :
+                                                                                        'bg-slate-100 text-slate-700'
+                                                                    }`}>
+                                                                    {sub.grade}
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
-                )}
-            </div>
-        );
+
+                    {/* Basket Details */}
+                    {gradeSheetMetadata.basketDetails && gradeSheetMetadata.basketDetails.length > 0 && (
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Basket Details</h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-slate-200">
+                                            <th className="text-left py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Basket Title</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Type</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Required</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Earned</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {gradeSheetMetadata.basketDetails.map((basket, idx) => (
+                                            <tr key={idx} className="border-b border-slate-100">
+                                                <td className="py-3 px-2 text-slate-700">{basket.title}</td>
+                                                <td className="py-3 px-2 text-center">
+                                                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                                        {basket.distributionType}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-2 text-center font-mono text-slate-700">{basket.creditsRequired}</td>
+                                                <td className="py-3 px-2 text-center font-mono font-bold text-primary-600">{basket.creditsEarned}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Curriculum Details */}
+                    {gradeSheetMetadata.curriculumDetails && gradeSheetMetadata.curriculumDetails.length > 0 && (
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up">
+                            <h3 className="text-lg font-bold text-slate-800 mb-4">Curriculum Details</h3>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-slate-200">
+                                            <th className="text-left py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Distribution Type</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Required</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Earned</th>
+                                            <th className="text-center py-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">Progress</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {gradeSheetMetadata.curriculumDetails.map((curr, idx) => {
+                                            const progress = curr.creditsRequired > 0 ? (curr.creditsEarned / curr.creditsRequired * 100) : 0;
+                                            return (
+                                                <tr key={idx} className="border-b border-slate-100">
+                                                    <td className="py-3 px-2 text-slate-700 font-medium">{curr.type}</td>
+                                                    <td className="py-3 px-2 text-center font-mono text-slate-700">{curr.creditsRequired}</td>
+                                                    <td className="py-3 px-2 text-center font-mono font-bold text-primary-600">{curr.creditsEarned}</td>
+                                                    <td className="py-3 px-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="flex-grow bg-slate-200 rounded-full h-2 overflow-hidden">
+                                                                <div
+                                                                    className="bg-primary-600 h-full rounded-full transition-all"
+                                                                    style={{ width: `${Math.min(progress, 100)}%` }}
+                                                                ></div>
+                                                            </div>
+                                                            <span className="text-xs font-mono text-slate-600 w-12 text-right">
+                                                                {progress.toFixed(0)}%
+                                                            </span>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const CoursePlannerView = ({ completedSemesters, courseCatalog, onUpdatePlan }) => {
+            const [coursePlan, setCoursePlan] = useState({
+                semesters: {
+                    6: [],
+                    7: [],
+                    8: []
+                }
+            });
+            const [selectedSemester, setSelectedSemester] = useState(null);
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [selectedCategory, setSelectedCategory] = useState('ALL');
+            const [completedCredits, setCompletedCredits] = useState({});
+            const [recommendations, setRecommendations] = useState([]);
+
+            // Calculate completed credits on mount and when completedSemesters changes
+            useEffect(() => {
+                if (completedSemesters && completedSemesters.length > 0) {
+                    const credits = calculateCompletedCategoryCredits(completedSemesters);
+                    setCompletedCredits(credits);
+
+                    if (courseCatalog) {
+                        const recs = getCourseRecommendations(credits, courseCatalog);
+                        setRecommendations(recs);
+                    }
+                }
+            }, [completedSemesters, courseCatalog]);
+
+            // Load saved plan from localStorage
+            useEffect(() => {
+                const saved = localStorage.getItem('coursePlan_v1');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        setCoursePlan(parsed);
+                    } catch (e) {
+                        console.error('Failed to load course plan:', e);
+                    }
+                }
+            }, []);
+
+            // Save plan to localStorage
+            useEffect(() => {
+                localStorage.setItem('coursePlan_v1', JSON.stringify(coursePlan));
+                if (onUpdatePlan) {
+                    onUpdatePlan(coursePlan);
+                }
+            }, [coursePlan, onUpdatePlan]);
+
+            const handleAddCourse = (semesterNumber, course) => {
+                setCoursePlan(prev => ({
+                    ...prev,
+                    semesters: {
+                        ...prev.semesters,
+                        [semesterNumber]: [...(prev.semesters[semesterNumber] || []), course]
+                    }
+                }));
+
+                // Auto-add BEXC100N to next semester if added
+                if (course.code === 'BEXC100N' && semesterNumber < 8) {
+                    setTimeout(() => {
+                        setCoursePlan(prev => ({
+                            ...prev,
+                            semesters: {
+                                ...prev.semesters,
+                                [semesterNumber + 1]: [...(prev.semesters[semesterNumber + 1] || []), {
+                                    ...course,
+                                    autoAdded: true,
+                                    note: 'Auto-added (BEXC100N spans 2 semesters)'
+                                }]
+                            }
+                        }));
+                    }, 100);
+                }
+            };
+
+            const handleRemoveCourse = (semesterNumber, courseIndex) => {
+                setCoursePlan(prev => ({
+                    ...prev,
+                    semesters: {
+                        ...prev.semesters,
+                        [semesterNumber]: prev.semesters[semesterNumber].filter((_, idx) => idx !== courseIndex)
+                    }
+                }));
+            };
+
+            const openCourseModal = (semesterNumber) => {
+                setSelectedSemester(semesterNumber);
+                setIsModalOpen(true);
+            };
+
+            const closeCourseModal = () => {
+                setIsModalOpen(false);
+                setSelectedSemester(null);
+                setSearchQuery('');
+                setSelectedCategory('ALL');
+            };
+
+            // Calculate total credits including planned
+            const calculateTotalCredits = () => {
+                const planned = { ...completedCredits };
+
+                Object.values(coursePlan.semesters).forEach(semester => {
+                    semester.forEach(course => {
+                        if (planned[course.category] !== undefined) {
+                            planned[course.category] += course.credits;
+                        }
+                    });
+                });
+
+                return planned;
+            };
+
+            const totalCredits = calculateTotalCredits();
+            const totalEarned = Object.values(totalCredits).reduce((sum, val) => sum + val, 0);
+            const progressPercent = (totalEarned / CREDIT_REQUIREMENTS.TOTAL.required) * 100;
+
+            // Filter courses for modal
+            const getAvailableCourses = () => {
+                if (!courseCatalog) return [];
+
+                let courses = [];
+                if (selectedCategory === 'ALL') {
+                    Object.values(courseCatalog).forEach(categoryList => {
+                        courses = courses.concat(categoryList);
+                    });
+                } else {
+                    courses = courseCatalog[selectedCategory] || [];
+                }
+
+                // Filter by search query
+                if (searchQuery) {
+                    const query = searchQuery.toLowerCase();
+                    courses = courses.filter(c =>
+                        c.code.toLowerCase().includes(query) ||
+                        c.title.toLowerCase().includes(query)
+                    );
+                }
+
+                // Filter out already added courses in this semester
+                const semesterCourses = coursePlan.semesters[selectedSemester] || [];
+                const addedCodes = new Set(semesterCourses.map(c => c.code));
+                courses = courses.filter(c => !addedCodes.has(c.code));
+
+                return courses;
+            };
+
+            if (!courseCatalog) {
+                return (
+                    <div className="flex flex-col items-center justify-center py-20 px-4">
+                        <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                            <i className="ph-bold ph-spinner animate-spin text-4xl text-slate-400"></i>
+                        </div>
+                        <h3 className="text-xl font-bold text-slate-700 mb-2">Loading Course Catalog...</h3>
+                        <p className="text-slate-500 text-center max-w-md">
+                            Please wait while we load the course information.
+                        </p>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="space-y-8">
+                    {/* Progress Overview */}
+                    <div className="glass-card rounded-3xl p-8 animate-slide-up">
+                        <div className="flex items-center justify-between mb-6">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-800">Course Planner</h2>
+                                <p className="text-slate-500 text-sm">Plan your path to graduation</p>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-4xl font-bold text-primary-600 font-mono">
+                                    {totalEarned.toFixed(1)}
+                                </div>
+                                <div className="text-xs text-slate-500 uppercase tracking-wider">
+                                    / {CREDIT_REQUIREMENTS.TOTAL.required} Credits
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Overall Progress Bar */}
+                        <div className="mb-6">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-sm font-bold text-slate-700">Overall Progress</span>
+                                <span className="text-sm font-mono text-slate-600">{progressPercent.toFixed(1)}%</span>
+                            </div>
+                            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                                <div
+                                    className="bg-gradient-to-r from-primary-500 to-primary-600 h-full rounded-full transition-all duration-500"
+                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* Category Breakdown */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            {Object.keys(CREDIT_REQUIREMENTS).filter(k => k !== 'TOTAL').map(category => {
+                                const required = CREDIT_REQUIREMENTS[category].required;
+                                const earned = totalCredits[category] || 0;
+                                const percent = required > 0 ? (earned / required) * 100 : 0;
+                                const isComplete = earned >= required;
+
+                                return (
+                                    <div key={category} className="bg-white/50 rounded-xl p-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">{category}</span>
+                                            {isComplete && <i className="ph-fill ph-check-circle text-green-500"></i>}
+                                        </div>
+                                        <div className="text-lg font-bold text-slate-800 font-mono mb-1">
+                                            {earned.toFixed(1)} / {required}
+                                        </div>
+                                        <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all ${isComplete ? 'bg-green-500' : 'bg-primary-500'}`}
+                                                style={{ width: `${Math.min(percent, 100)}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {/* Elective Total (DE + OE) */}
+                        <div className="mt-4 p-4 bg-blue-50 rounded-xl">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <span className="text-sm font-bold text-blue-700">Electives Total (DE + OE)</span>
+                                    <p className="text-xs text-blue-600 mt-1">Must equal exactly {ELECTIVE_TOTAL_REQUIREMENT} credits</p>
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-2xl font-bold text-blue-700 font-mono">
+                                        {((totalCredits.DE || 0) + (totalCredits.OE || 0)).toFixed(1)}
+                                    </div>
+                                    <div className="text-xs text-blue-600">/ {ELECTIVE_TOTAL_REQUIREMENT}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Recommendations */}
+                        {recommendations.length > 0 && (
+                            <div className="mt-6">
+                                <h4 className="text-sm font-bold text-slate-700 mb-3">📋 Recommendations</h4>
+                                <div className="space-y-2">
+                                    {recommendations.slice(0, 3).map((rec, idx) => (
+                                        <div key={idx} className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm">
+                                            <span className="font-bold text-amber-800">{rec.category}:</span>
+                                            <span className="text-amber-700 ml-2">{rec.message}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Semester Planning */}
+                    <div className="space-y-4">
+                        <h3 className="text-lg font-bold text-slate-800 px-2">Semester Planning</h3>
+
+                        {[6, 7, 8].map(semNum => {
+                            const semesterCourses = coursePlan.semesters[semNum] || [];
+                            const validation = validateSemesterCredits(semesterCourses, semNum);
+
+                            return (
+                                <div key={semNum} className="glass-card rounded-2xl p-6 animate-slide-up">
+                                    {/* Semester Header */}
+                                    <div className="flex justify-between items-center mb-4">
+                                        <div>
+                                            <h4 className="text-lg font-bold text-slate-800">Semester {semNum}</h4>
+                                            <p className="text-xs text-slate-500">
+                                                {validation.regularCredits.toFixed(1)} / {SEMESTER_LIMITS.base} credits
+                                                {validation.hasNPTEL && ' (+ NPTEL)'}
+                                                {validation.projectCredits > 0 && ` (+ ${validation.projectCredits} PI)`}
+                                            </p>
+                                            {(coursePlan.semesters[semNum] || []).some(c => c.targetGPA >= 9 || c.targetGPA === 10) && (
+                                                <div className="mt-2 text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-200">
+                                                    Note: 9.0 and 10.0 GPA both map to 4.0 on the US scale.
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button
+                                            onClick={() => openCourseModal(semNum)}
+                                            className="btn-primary px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2"
+                                        >
+                                            <i className="ph-bold ph-plus"></i>
+                                            Add Course
+                                        </button>
+                                    </div>
+
+                                    {/* Warnings */}
+                                    {validation.warnings.length > 0 && (
+                                        <div className="mb-4 space-y-2">
+                                            {validation.warnings.map((warning, idx) => (
+                                                <div key={idx} className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-sm flex items-start gap-2">
+                                                    <i className="ph-fill ph-warning text-amber-600 mt-0.5"></i>
+                                                    <span className="text-amber-800">{warning}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {/* Course List */}
+                                    {semesterCourses.length === 0 ? (
+                                        <div className="text-center py-8 text-slate-400">
+                                            <i className="ph-bold ph-books text-4xl mb-2"></i>
+                                            <p className="text-sm">No courses planned yet</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {semesterCourses.map((course, idx) => (
+                                                <div key={idx} className="bg-white/50 rounded-lg p-4 flex justify-between items-center hover:bg-white/80 transition-colors">
+                                                    <div className="flex-grow">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="font-mono text-xs bg-slate-100 px-2 py-1 rounded text-slate-600">
+                                                                {course.code}
+                                                            </span>
+                                                            <span className="font-bold text-slate-800">{course.title}</span>
+                                                            {course.isNPTEL && (
+                                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold">
+                                                                    NPTEL
+                                                                </span>
+                                                            )}
+                                                            {course.autoAdded && (
+                                                                <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">
+                                                                    Auto-added
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-4 mt-1 text-xs text-slate-500">
+                                                            <span>{course.category}</span>
+                                                            <span>•</span>
+                                                            <span>{course.credits} credits</span>
+                                                            <span>•</span>
+                                                            <span>{course.type}</span>
+                                                        </div>
+                                                        {course.note && (
+                                                            <p className="text-xs text-slate-500 italic mt-1">{course.note}</p>
+                                                        )}
+                                                    </div>
+                                                    <button
+                                                        onClick={() => handleRemoveCourse(semNum, idx)}
+                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                                                    >
+                                                        <i className="ph-bold ph-trash text-lg"></i>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    {/* Course Selection Modal */}
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+                            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
+                                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <div>
+                                        <h3 className="text-xl font-bold text-slate-800">Add Course to Semester {selectedSemester}</h3>
+                                        <p className="text-sm text-slate-500">Select courses to add to your plan</p>
+                                    </div>
+                                    <button onClick={closeCourseModal} className="text-slate-400 hover:text-slate-600 transition-colors">
+                                        <i className="ph-bold ph-x text-xl"></i>
+                                    </button>
+                                </div>
+
+                                <div className="p-6 border-b border-slate-100 space-y-4">
+                                    {/* Search */}
+                                    <div className="relative">
+                                        <i className="ph-bold ph-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                        <input
+                                            type="text"
+                                            placeholder="Search by code or title..."
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                                        />
+                                    </div>
+
+                                    {/* Category Filter */}
+                                    <div className="flex gap-2 flex-wrap">
+                                        {['ALL', 'FC', 'DLES', 'DC', 'DE', 'OE', 'PI', 'NGCR'].map(cat => (
+                                            <button
+                                                key={cat}
+                                                onClick={() => setSelectedCategory(cat)}
+                                                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${selectedCategory === cat
+                                                    ? 'bg-primary-600 text-white shadow-lg'
+                                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                                    }`}
+                                            >
+                                                {cat}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex-grow overflow-y-auto p-6">
+                                    <div className="space-y-2">
+                                        {getAvailableCourses().map((course, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => {
+                                                    handleAddCourse(selectedSemester, course);
+                                                    closeCourseModal();
+                                                }}
+                                                className="w-full bg-slate-50 hover:bg-primary-50 border border-slate-200 hover:border-primary-300 rounded-xl p-4 text-left transition-all"
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex-grow">
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            <span className="font-mono text-xs bg-white px-2 py-1 rounded border border-slate-200 text-slate-600">
+                                                                {course.code}
+                                                            </span>
+                                                            <span className="font-bold text-slate-800">{course.title}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                            <span className="font-bold text-primary-600">{course.category}</span>
+                                                            <span>•</span>
+                                                            <span>{course.credits} credits</span>
+                                                            <span>•</span>
+                                                            <span>{course.type}</span>
+                                                            {course.isNPTEL && (
+                                                                <>
+                                                                    <span>•</span>
+                                                                    <span className="text-blue-600 font-bold">NPTEL (doesn't count toward 27.5)</span>
+                                                                </>
+                                                            )}
+                                                            {!course.countsTowardLimit && (
+                                                                <>
+                                                                    <span>•</span>
+                                                                    <span className="text-purple-600 font-bold">Doesn't count toward limit</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <i className="ph-bold ph-plus-circle text-2xl text-primary-600"></i>
+                                                </div>
+                                            </button>
+                                        ))}
+                                        {getAvailableCourses().length === 0 && (
+                                            <div className="text-center py-12 text-slate-400">
+                                                <i className="ph-bold ph-magnifying-glass text-4xl mb-2"></i>
+                                                <p>No courses found</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+                                    <button
+                                        onClick={closeCourseModal}
+                                        className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                                    >
+                                        Close
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        // Updated CalculatorView with Semester Planning Interface
+        // --- COMPONENTS ---
+        const CourseSearchInput = ({ value, onChange, onSelect, catalog, placeholder, className }) => {
+            const [suggestions, setSuggestions] = useState([]);
+            const [showSuggestions, setShowSuggestions] = useState(false);
+            const wrapperRef = useRef(null);
+
+            useEffect(() => {
+                const handleClickOutside = (event) => {
+                    if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+                        setShowSuggestions(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            const handleInput = (e) => {
+                const val = e.target.value;
+                onChange(val);
+
+                if (val.length > 1 && catalog) {
+                    const matches = catalog.filter(c =>
+                        c.title.toLowerCase().includes(val.toLowerCase()) ||
+                        c.code.toLowerCase().includes(val.toLowerCase())
+                    ).slice(0, 5);
+                    setSuggestions(matches);
+                    setShowSuggestions(true);
+                } else {
+                    setShowSuggestions(false);
+                }
+            };
+
+            return (
+                <div ref={wrapperRef} className="relative w-full">
+                    <input
+                        type="text"
+                        value={value}
+                        onChange={handleInput}
+                        onFocus={() => value.length > 1 && setSuggestions(catalog?.filter(c => c.title.toLowerCase().includes(value.toLowerCase()) || c.code.toLowerCase().includes(value.toLowerCase())).slice(0, 5) || []) && setShowSuggestions(true)}
+                        placeholder={placeholder}
+                        className={className}
+                    />
+                    {showSuggestions && suggestions.length > 0 && (
+                        <div className="absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden animate-fade-in">
+                            {suggestions.map(course => (
+                                <button
+                                    key={course.code}
+                                    onClick={() => {
+                                        onSelect(course);
+                                        setShowSuggestions(false);
+                                    }}
+                                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors border-b border-slate-50 last:border-none"
+                                >
+                                    <div className="font-bold text-slate-700 text-sm">{course.title}</div>
+                                    <div className="flex justify-between mt-1">
+                                        <span className="text-xs font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">{course.code}</span>
+                                        <span className="text-xs text-slate-400">{course.credits} Cr • {course.category}</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const CalculatorView = ({
+            completedSemesters,
+            plannedSemesters, setPlannedSemesters,
+            maxPlannedSemester, setMaxPlannedSemester,
+            totals,
+            historyStats,
+            completedStats,
+            plannedStats,
+            handleExportCSV, handleImportCSV,
+            setView,
+            courseCatalog // Add prop
+        }) => {
+            const flatCatalog = useMemo(() => {
+                if (!courseCatalog) return [];
+                return Object.values(courseCatalog).flat();
+            }, [courseCatalog]);
+
+            // Calculate minimum semester (based on completed semesters)
+            const minSemester = (completedSemesters?.length || 0) + 1;
+            const maxSemester = 8;
+
+            // Get or create planned semester data
+            const getCurrentPlannedSemester = () => {
+                return (plannedSemesters || []).find(s => s.semesterNumber === maxPlannedSemester) || {
+                    id: `planned-${maxPlannedSemester}`,
+                    semesterNumber: maxPlannedSemester,
+                    inputMode: 'simple', // 'simple' or 'detailed'
+                    targetGPA: 8.0,
+                    credits: 20,
+                    subjects: []
+                };
+            };
+
+            const currentPlanned = getCurrentPlannedSemester();
+
+            // Update planned semester
+            const updatePlannedSemester = (updates) => {
+                const updated = { ...currentPlanned, ...updates };
+                const otherSemesters = (plannedSemesters || []).filter(s => s.semesterNumber !== maxPlannedSemester);
+                setPlannedSemesters([...otherSemesters, updated]);
+            };
+
+            // Toggle input mode
+            const toggleInputMode = () => {
+                const newMode = currentPlanned.inputMode === 'simple' ? 'detailed' : 'simple';
+                updatePlannedSemester({ inputMode: newMode });
+            };
+
+            // Add subject (for detailed mode)
+            const addSubject = () => {
+                const newSubject = {
+                    id: Date.now(),
+                    name: '',
+                    credits: 3,
+                    grade: 'A'
+                };
+                updatePlannedSemester({
+                    subjects: [...currentPlanned.subjects, newSubject]
+                });
+            };
+
+            // Update subject
+            const updateSubject = (id, field, value) => {
+                const updatedSubjects = currentPlanned.subjects.map(s =>
+                    s.id === id ? { ...s, [field]: value } : s
+                );
+                updatePlannedSemester({ subjects: updatedSubjects });
+            };
+
+            // Remove subject
+            const removeSubject = (id) => {
+                updatePlannedSemester({
+                    subjects: currentPlanned.subjects.filter(s => s.id !== id)
+                });
+            };
+
+            // Calculate stats for current planned semester
+            const calculatePlannedSemesterStats = () => {
+                if (currentPlanned.inputMode === 'simple') {
+                    return {
+                        credits: currentPlanned.credits || 0,
+                        gpa10: currentPlanned.targetGPA || 0,
+                        gpa4: convertTo4Scale(currentPlanned.targetGPA || 0)
+                    };
+                } else {
+                    // Calculate from subjects
+                    let credits = 0;
+                    let pts10 = 0;
+                    let pts4 = 0;
+                    currentPlanned.subjects.forEach(sub => {
+                        if (sub.grade && GRADE_POINTS[sub.grade]) {
+                            credits += sub.credits;
+                            pts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
+                            pts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
+                        }
+                    });
+                    return {
+                        credits,
+                        gpa10: credits > 0 ? pts10 / credits : 0,
+                        gpa4: credits > 0 ? pts4 / credits : 0
+                    };
+                }
+            };
+
+            const currentSemesterStats = calculatePlannedSemesterStats();
+
+            // Calculate projected totals (completed + all planned up to maxPlannedSemester)
+            const calculateProjectedTotals = () => {
+                let totalCredits = completedStats?.totalCredits || 0;
+                let gradedCredits = completedStats?.gradedCredits || 0;
+                let totalPts10 = completedStats?.pts10 || 0;
+                let totalPts4 = completedStats?.pts4 || 0;
+
+                // Add all planned semesters up to maxPlannedSemester
+                (plannedSemesters || [])
+                    .filter(s => s.semesterNumber <= maxPlannedSemester)
+                    .forEach(sem => {
+                        if (sem.inputMode === 'simple') {
+                            const semCredits = sem.credits || 0;
+                            totalCredits += semCredits;
+                            gradedCredits += semCredits;
+                            totalPts10 += (sem.targetGPA || 0) * semCredits;
+                            totalPts4 += convertTo4Scale(sem.targetGPA || 0) * semCredits;
+                        } else {
+                            sem.subjects.forEach(sub => {
+                                if (sub.grade && GRADE_POINTS[sub.grade]) {
+                                    gradedCredits += sub.credits;
+                                    totalPts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
+                                    totalPts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
+                                }
+                                // Assume all planned subjects contribute to total credits
+                                totalCredits += sub.credits || 0;
+                            });
+                        }
+                    });
+
+                return {
+                    credits: totalCredits,
+                    gradedCredits: gradedCredits,
+                    gpa10: gradedCredits > 0 ? totalPts10 / gradedCredits : 0,
+                    gpa4: gradedCredits > 0 ? totalPts4 / gradedCredits : 0,
+                    german: convertToGerman(gradedCredits > 0 ? totalPts10 / gradedCredits : 0)
+                };
+            };
+
+            const projectedTotals = calculateProjectedTotals();
+
+            return (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                    <div className="lg:col-span-7 space-y-8">
+                        {/* Semester Slider */}
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up">
+                            <div className="mb-6">
+                                <h2 className="font-bold text-slate-800 text-lg mb-1">Semester Planning</h2>
+                                <p className="text-xs text-slate-500">
+                                    Plan semester {maxPlannedSemester} ({minSemester <= maxPlannedSemester ? 'Future' : 'Past'})
+                                </p>
+                            </div>
+
+                            {/* Slider Component */}
+                            <div className="relative h-12 bg-slate-100 rounded-2xl mb-8 p-1">
+                                <div
+                                    className="absolute top-1 bottom-1 left-1 bg-white rounded-xl shadow-sm transition-all duration-300 ease-out border border-slate-200/50"
+                                    style={{
+                                        width: `calc(${(100 / 8)}% - 8px)`,
+                                        left: `calc(${((maxPlannedSemester - 1) / 8) * 100}% + 4px)`
+                                    }}
+                                >
+                                    <div className="w-full h-full flex items-center justify-center font-bold text-primary-600">
+                                        {maxPlannedSemester}
+                                    </div>
+                                </div>
+                                <div className="absolute inset-0 flex justify-between items-center px-4 pointer-events-none">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8].map(num => (
+                                        <div
+                                            key={num}
+                                            className={`text-xs font-bold transition-colors duration-300 ${num === maxPlannedSemester ? 'text-transparent' :
+                                                num < minSemester ? 'text-slate-400' : 'text-slate-400'
+                                                }`}
+                                        >
+                                            {num}
+                                        </div>
+                                    ))}
+                                </div>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="8"
+                                    value={maxPlannedSemester}
+                                    onChange={(e) => {
+                                        const val = parseInt(e.target.value);
+                                        if (val >= minSemester) setMaxPlannedSemester(val);
+                                    }}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                />
+                            </div>
+
+                            {/* Input Mode Toggle */}
+                            <div className="flex justify-center mb-8">
+                                <div className="bg-slate-100 p-1 rounded-xl inline-flex">
+                                    <button
+                                        onClick={() => toggleInputMode()}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${currentPlanned.inputMode === 'simple'
+                                            ? 'bg-white text-primary-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        Simple Mode
+                                    </button>
+                                    <button
+                                        onClick={() => toggleInputMode()}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${currentPlanned.inputMode === 'detailed'
+                                            ? 'bg-white text-primary-600 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                            }`}
+                                    >
+                                        Detailed Mode
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Planning Interface */}
+                            {currentPlanned.inputMode === 'simple' ? (
+                                <div className="space-y-6 animate-fade-in">
+                                    {/* Target GPA Slider */}
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm font-bold text-slate-700">Target GPA</label>
+                                            <span className="text-primary-600 font-mono font-bold">{currentPlanned.targetGPA?.toFixed(2)}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="10"
+                                            step="0.1"
+                                            value={currentPlanned.targetGPA || 0}
+                                            onChange={(e) => updatePlannedSemester({ targetGPA: parseFloat(e.target.value) })}
+                                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                                        />
+                                        {/* Simple Mode Validation Warning */}
+                                        {(currentPlanned.targetGPA || 0) >= 9 && (
+                                            <div className="mt-2 text-xs text-amber-600 bg-amber-50 px-3 py-2 rounded-lg flex items-center gap-2">
+                                                <i className="ph-bold ph-warning"></i>
+                                                <span>Note: GPA of 9.0 and 10.0 both map to 4.0 on the 4-point scale.</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Credits Slider */}
+                                    <div>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm font-bold text-slate-700">Credits</label>
+                                            <span className="text-primary-600 font-mono font-bold">{currentPlanned.credits}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="30"
+                                            step="0.5"
+                                            value={currentPlanned.credits || 0}
+                                            onChange={(e) => updatePlannedSemester({ credits: parseFloat(e.target.value) })}
+                                            className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                                        />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 animate-fade-in">
+                                    {/* Detailed Mode - Subject List */}
+                                    {currentPlanned.subjects.map((sub, idx) => (
+                                        <div key={sub.id} className="flex gap-2 items-start">
+                                            <div className="flex-1">
+                                                <CourseSearchInput
+                                                    value={sub.name}
+                                                    onChange={(val) => {
+                                                        const newSubjects = [...currentPlanned.subjects];
+                                                        newSubjects[idx].name = val;
+                                                        updatePlannedSemester({ subjects: newSubjects });
+                                                    }}
+                                                    onSelect={(course) => {
+                                                        const newSubjects = [...currentPlanned.subjects];
+                                                        newSubjects[idx].name = course.title;
+                                                        newSubjects[idx].credits = course.credits;
+                                                        updatePlannedSemester({ subjects: newSubjects });
+                                                    }}
+                                                    catalog={flatCatalog}
+                                                    placeholder="Subject Name"
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary-500"
+                                                />
+                                            </div>
+                                            <div className="w-20">
+                                                <input
+                                                    type="number"
+                                                    placeholder="Cr"
+                                                    value={sub.credits}
+                                                    onChange={(e) => {
+                                                        const newSubjects = [...currentPlanned.subjects];
+                                                        newSubjects[idx].credits = parseFloat(e.target.value) || 0;
+                                                        updatePlannedSemester({ subjects: newSubjects });
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary-500"
+                                                />
+                                            </div>
+                                            <div className="w-24">
+                                                <select
+                                                    value={sub.grade}
+                                                    onChange={(e) => {
+                                                        const newSubjects = [...currentPlanned.subjects];
+                                                        newSubjects[idx].grade = e.target.value;
+                                                        updatePlannedSemester({ subjects: newSubjects });
+                                                    }}
+                                                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-primary-500"
+                                                >
+                                                    <option value="">Grade</option>
+                                                    {Object.keys(GRADE_POINTS).map(g => (
+                                                        <option key={g} value={g}>{g}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const newSubjects = currentPlanned.subjects.filter((_, i) => i !== idx);
+                                                    updatePlannedSemester({ subjects: newSubjects });
+                                                }}
+                                                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                            >
+                                                <i className="ph-bold ph-trash"></i>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    <button
+                                        onClick={() => {
+                                            const newSubjects = [...currentPlanned.subjects, { id: Date.now(), name: '', credits: 3, grade: '' }];
+                                            updatePlannedSemester({ subjects: newSubjects });
+                                        }}
+                                        className="w-full py-2 border-2 border-dashed border-slate-200 rounded-xl text-slate-500 hover:border-primary-500 hover:text-primary-600 transition-all text-sm font-bold flex items-center justify-center gap-2"
+                                    >
+                                        <i className="ph-bold ph-plus"></i>
+                                        Add Subject
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Right Column: Stats */}
+                    <div className="lg:col-span-5 space-y-8">
+                        {/* Projected CGPA */}
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '200ms' }}>
+                            <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider mb-4">Projected CGPA</h3>
+                            <div className="text-center">
+                                <div className="text-6xl font-bold text-primary-600 font-mono mb-2">
+                                    {projectedTotals.gpa10.toFixed(2)}
+                                </div>
+                                <div className="text-sm text-slate-500">
+                                    After Semester {maxPlannedSemester}
+                                </div>
+                                <div className="mt-4 pt-4 border-t border-slate-200">
+                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                        <div>
+                                            <div className="text-slate-500">Total Credits</div>
+                                            <div className="font-bold text-slate-700 font-mono">{projectedTotals.credits.toFixed(1)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-slate-500">4-Point Scale</div>
+                                            <div className="font-bold text-slate-700 font-mono">{projectedTotals.gpa4.toFixed(2)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Current Status */}
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '300ms' }}>
+                            <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider mb-4">Current Status</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-600">Completed Semesters</span>
+                                    <span className="font-bold text-slate-800 font-mono">{completedSemesters?.length || 0}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-600">Current CGPA</span>
+                                    <span className="font-bold text-slate-800 font-mono">{(completedStats?.gpa10 || 0).toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-600">Graded Credits</span>
+                                    <span className="font-bold text-slate-800 font-mono">{(completedStats?.gradedCredits || 0).toFixed(1)}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-slate-600">Total Credits</span>
+                                    <span className="font-bold text-slate-800 font-mono">{(completedStats?.totalCredits || 0).toFixed(1)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="glass-card rounded-3xl p-8 animate-slide-up" style={{ animationDelay: '400ms' }}>
+                            <h3 className="text-sm font-bold text-slate-600 uppercase tracking-wider mb-4">Quick Actions</h3>
+                            <div className="space-y-3">
+                                <button
+                                    onClick={() => setView('gradesheet')}
+                                    className="w-full px-4 py-3 bg-white/50 hover:bg-white/80 border border-white/50 rounded-xl text-sm font-bold text-slate-700 transition-all flex items-center justify-between"
+                                >
+                                    <span>View Grade Sheet</span>
+                                    <i className="ph-bold ph-arrow-right"></i>
+                                </button>
+                                <button
+                                    onClick={() => setView('planner')}
+                                    className="w-full px-4 py-3 bg-white/50 hover:bg-white/80 border border-white/50 rounded-xl text-sm font-bold text-slate-700 transition-all flex items-center justify-between"
+                                >
+                                    <span>Course Planner</span>
+                                    <i className="ph-bold ph-arrow-right"></i>
+                                </button>
+                                <button
+                                    onClick={() => setView('report')}
+                                    className="w-full px-4 py-3 bg-white/50 hover:bg-white/80 border border-white/50 rounded-xl text-sm font-bold text-slate-700 transition-all flex items-center justify-between"
+                                >
+                                    <span>View Report</span>
+                                    <i className="ph-bold ph-arrow-right"></i>
+                                </button>
+
+                                {/* Divider */}
+                                <div className="border-t border-slate-200 my-4"></div>
+
+                                {/* Export CSV */}
+                                <button
+                                    onClick={handleExportCSV}
+                                    className="w-full px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-between shadow-lg shadow-green-500/30"
+                                >
+                                    <span>Export All Data</span>
+                                    <i className="ph-bold ph-download-simple"></i>
+                                </button>
+
+                                {/* Import CSV */}
+                                <label className="w-full px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-xl text-sm font-bold transition-all flex items-center justify-between shadow-lg shadow-blue-500/30 cursor-pointer">
+                                    <span>Import Data</span>
+                                    <i className="ph-bold ph-upload-simple"></i>
+                                    <input
+                                        type="file"
+                                        accept=".csv"
+                                        onChange={handleImportCSV}
+                                        className="hidden"
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        const ProfileView = ({ profileSemesters, setProfileSemesters, setIsImportModalOpen, courseCatalog }) => {
+            const flatCatalog = useMemo(() => {
+                if (!courseCatalog) return [];
+                return Object.values(courseCatalog).flat();
+            }, [courseCatalog]);
+
+            return (
+                <div className="max-w-4xl mx-auto animate-fade-in">
+                    <div className="flex justify-between items-end mb-8">
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">Student Profile</h2>
+                            <p className="text-slate-500">Build your academic history semester by semester.</p>
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={() => setIsImportModalOpen(true)} className="bg-white text-slate-600 hover:text-primary-600 hover:bg-slate-50 px-4 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-sm border border-slate-200 transition-all">
+                                <i className="ph-bold ph-magic-wand"></i> Smart Import
+                            </button>
+                            <button onClick={() => setProfileSemesters([...profileSemesters, { id: Date.now(), name: `Semester ${profileSemesters.length + 1}`, subjects: [] }])} className="btn-primary px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2">
+                                <i className="ph-bold ph-plus"></i> Add Semester
+                            </button>
+                        </div>
+                    </div>
+
+                    {profileSemesters.length === 0 ? (
+                        <div className="text-center py-20 glass-card rounded-3xl border-dashed border-2 border-slate-300/50">
+                            <div className="w-20 h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-6 text-primary-400 text-3xl shadow-inner">
+                                <i className="ph-fill ph-books"></i>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Start Your Journey</h3>
+                            <p className="text-slate-500 mb-6 max-w-md mx-auto">Add your previous semesters to unlock powerful insights and accurate predictions.</p>
+                            <button onClick={() => setProfileSemesters([{ id: Date.now(), name: 'Semester 1', subjects: [] }])} className="text-primary-600 font-bold hover:underline">Create your first semester</button>
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            {profileSemesters.map((sem, idx) => (
+                                <ProfileSemester
+                                    key={sem.id}
+                                    semester={sem}
+                                    onUpdateName={(id, val) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, name: val } : s))}
+                                    onUpdateSubjects={(id, subs) => setProfileSemesters(prev => prev.map(s => s.id === id ? { ...s, subjects: subs } : s))}
+                                    onDelete={(id) => setProfileSemesters(prev => prev.filter(s => s.id !== id))}
+                                    index={idx}
+                                    catalog={flatCatalog}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+        };
 
         const ReportView = ({ totals, currentStats, profileSemesters, currentSemSubjects, config }) => (
             <div className="glass-card rounded-3xl overflow-hidden animate-fade-in max-w-5xl mx-auto">
@@ -1223,41 +2744,149 @@
         // --- MAIN APP ---
 
         const App = () => {
-            const [view, setView] = useState('dashboard'); // 'dashboard' | 'profile' | 'report'
+            const [view, setView] = useState('dashboard'); // 'dashboard' | 'profile' | 'report' | 'gradesheet'
 
-            // State: Profile (The Source of Truth for History)
+            // NEW DATA MODEL: 8-Semester System
+            const [completedSemesters, setCompletedSemesters] = useState([]); // Semesters from grade sheet
+            const [plannedSemesters, setPlannedSemesters] = useState([]); // Future semester plans
+            const [gradeSheetMetadata, setGradeSheetMetadata] = useState({
+                basketDetails: [],
+                cgpaDetails: null,
+                curriculumDetails: []
+            });
+            const [maxPlannedSemester, setMaxPlannedSemester] = useState(1); // Slider value (1-8)
+
+            // COURSE PLANNER
+            const [courseCatalog, setCourseCatalog] = useState(null);
+
+            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+            const [isLoaded, setIsLoaded] = useState(false);
+
+            // LEGACY SUPPORT: Keep old state for migration
             const [profileSemesters, setProfileSemesters] = useState([]);
-
-            // State: Calculator (The Playground)
             const [currentSemSubjects, setCurrentSemSubjects] = useState(INITIAL_CURRENT_SEM);
             const [config, setConfig] = useState(INITIAL_CONFIG);
-            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
-            const [isLoaded, setIsLoaded] = useState(false);
+            // --- LOAD COURSE CATALOG ---
+            useEffect(() => {
+                loadCourseCatalog().then(catalog => {
+                    if (catalog) {
+                        setCourseCatalog(catalog);
+                    }
+                });
+            }, []);
 
             // --- STORAGE ---
             useEffect(() => {
-                const saved = localStorage.getItem('gpaData_v3');
+                const saved = localStorage.getItem('gpaData_v4');
                 if (saved) {
                     const parsed = JSON.parse(saved);
-                    setProfileSemesters(parsed.profile || []);
-                    setCurrentSemSubjects(parsed.current || INITIAL_CURRENT_SEM);
-                    setConfig(parsed.config || INITIAL_CONFIG);
+                    setCompletedSemesters(parsed.completedSemesters || []);
+                    setPlannedSemesters(parsed.plannedSemesters || []);
+                    setGradeSheetMetadata(parsed.gradeSheetMetadata || { basketDetails: [], cgpaDetails: null, curriculumDetails: [] });
+                    setMaxPlannedSemester(parsed.maxPlannedSemester || (parsed.completedSemesters?.length || 0) + 1);
+                } else {
+                    // Try to migrate from v3
+                    const oldSaved = localStorage.getItem('gpaData_v3');
+                    if (oldSaved) {
+                        const parsed = JSON.parse(oldSaved);
+                        // Migrate old profileSemesters to completedSemesters
+                        if (parsed.profile && parsed.profile.length > 0) {
+                            const migrated = parsed.profile.map((sem, idx) => ({
+                                id: sem.id,
+                                semesterNumber: idx + 1,
+                                name: sem.name,
+                                subjects: sem.subjects,
+                                cgpa: calculateSemesterStats(sem.subjects).gpa10,
+                                isCompleted: true
+                            }));
+                            setCompletedSemesters(migrated);
+                            setMaxPlannedSemester(migrated.length + 1);
+                        }
+                        // Keep legacy data for backward compatibility
+                        setProfileSemesters(parsed.profile || []);
+                        setCurrentSemSubjects(parsed.current || INITIAL_CURRENT_SEM);
+                        setConfig(parsed.config || INITIAL_CONFIG);
+                    }
                 }
                 setIsLoaded(true);
             }, []);
 
             useEffect(() => {
                 if (isLoaded) {
+                    localStorage.setItem('gpaData_v4', JSON.stringify({
+                        completedSemesters,
+                        plannedSemesters,
+                        gradeSheetMetadata,
+                        maxPlannedSemester
+                    }));
+                    // Also save legacy format for backward compatibility
                     localStorage.setItem('gpaData_v3', JSON.stringify({
                         profile: profileSemesters,
                         current: currentSemSubjects,
                         config
                     }));
                 }
-            }, [profileSemesters, currentSemSubjects, config, isLoaded]);
+            }, [completedSemesters, plannedSemesters, gradeSheetMetadata, maxPlannedSemester, profileSemesters, currentSemSubjects, config, isLoaded]);
 
             // --- CALCULATIONS ---
+            // Calculate stats from completed semesters
+            // Calculate stats from completed semesters
+            const completedStats = useMemo(() => {
+                let gradedCredits = 0, totalCredits = 0, pts10 = 0, pts4 = 0;
+                completedSemesters.forEach(sem => {
+                    sem.subjects.forEach(sub => {
+                        // Count graded credits (S, A, B, C, D, E, F)
+                        if (sub.grade && GRADE_POINTS[sub.grade]) {
+                            gradedCredits += sub.credits;
+                            pts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
+                            pts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
+                        }
+
+                        // Count total earned credits (S, A, B, C, D, E, P) - Exclude F, N, W
+                        const earnedGrades = ['S', 'A', 'B', 'C', 'D', 'E', 'P'];
+                        if (sub.grade && earnedGrades.includes(sub.grade)) {
+                            totalCredits += sub.credits;
+                        }
+                    });
+                });
+
+                const gpa10 = gradedCredits > 0 ? pts10 / gradedCredits : 0;
+                const gpa4 = gradedCredits > 0 ? pts4 / gradedCredits : 0;
+
+                return { gradedCredits, totalCredits, pts10, pts4, gpa10, gpa4 };
+            }, [completedSemesters]);
+
+            // Calculate stats from planned semesters (up to maxPlannedSemester)
+            const plannedStats = useMemo(() => {
+                let credits = 0, pts10 = 0, pts4 = 0;
+                const minCompletedSem = completedSemesters.length;
+
+                plannedSemesters.forEach(sem => {
+                    // Only include semesters within the slider range
+                    if (sem.semesterNumber > minCompletedSem && sem.semesterNumber <= maxPlannedSemester) {
+                        if (sem.inputMode === 'simple') {
+                            // Simple mode: use target GPA and credits
+                            const semCredits = sem.credits || 0;
+                            credits += semCredits;
+                            pts10 += semCredits * (sem.targetGPA || 0);
+                            pts4 += semCredits * interpolateUS(sem.targetGPA || 0);
+                        } else {
+                            // Detailed mode: calculate from subjects
+                            sem.subjects.forEach(sub => {
+                                if (sub.grade && GRADE_POINTS[sub.grade]) {
+                                    credits += sub.credits;
+                                    pts10 += GRADE_POINTS[sub.grade].val10 * sub.credits;
+                                    pts4 += GRADE_POINTS[sub.grade].val4 * sub.credits;
+                                }
+                            });
+                        }
+                    }
+                });
+                return { credits, pts10, pts4 };
+            }, [plannedSemesters, maxPlannedSemester, completedSemesters]);
+
+            // LEGACY: Keep old calculations for backward compatibility
             const historyStats = useMemo(() => {
                 let credits = 0, pts10 = 0, pts4 = 0;
                 profileSemesters.forEach(sem => {
@@ -1283,9 +2912,19 @@
             }, [config]);
 
             const totals = useMemo(() => {
-                const totalCredits = historyStats.credits + currentStats.credits + predictionStats.credits;
-                const totalPts10 = historyStats.pts10 + currentStats.pts10 + predictionStats.pts10;
-                const totalPts4 = historyStats.pts4 + currentStats.pts4 + predictionStats.pts4;
+                // Use new model if we have completed semesters, otherwise use legacy
+                const useNewModel = completedSemesters.length > 0;
+
+                let totalCredits, totalPts10, totalPts4;
+                if (useNewModel) {
+                    totalCredits = completedStats.credits + plannedStats.credits;
+                    totalPts10 = completedStats.pts10 + plannedStats.pts10;
+                    totalPts4 = completedStats.pts4 + plannedStats.pts4;
+                } else {
+                    totalCredits = historyStats.credits + currentStats.credits + predictionStats.credits;
+                    totalPts10 = historyStats.pts10 + currentStats.pts10 + predictionStats.pts10;
+                    totalPts4 = historyStats.pts4 + currentStats.pts4 + predictionStats.pts4;
+                }
 
                 return {
                     credits: totalCredits,
@@ -1293,75 +2932,274 @@
                     gpa4: totalCredits > 0 ? totalPts4 / totalCredits : 0,
                     german: convertToGerman(totalCredits > 0 ? totalPts10 / totalCredits : 0)
                 };
-            }, [historyStats, currentStats, predictionStats]);
+            }, [completedStats, plannedStats, historyStats, currentStats, predictionStats, completedSemesters]);
 
             // --- HANDLERS ---
             const handleExportCSV = () => {
-                let csv = "Context,Semester Name,Subject Name,Credits,Grade\n";
-                profileSemesters.forEach(sem => {
-                    sem.subjects.forEach(sub => {
-                        csv += `PROFILE,${sem.name},${sub.name},${sub.credits},${sub.grade}\n`;
-                    });
-                });
-                currentSemSubjects.forEach(sub => {
-                    csv += `CALCULATOR,Current Sem,${sub.name},${sub.credits},${sub.grade}\n`;
-                });
-                csv += `CONFIG,Next Sem Enabled,${config.includeNext},0,\n`;
-                csv += `CONFIG,Next Sem Credits,${config.nextCredits},0,\n`;
-                csv += `CONFIG,Next Target,${config.nextTarget},0,\n`;
+                // Create comprehensive CSV with all application state
+                let csv = "Type,SemesterNumber,SemesterName,InputMode,TargetGPA,Credits,SubjectName,SubjectCode,SubjectType,Grade,CGPA,IsCompleted,Category,Value,Notes\n";
 
-                const blob = new Blob([csv], { type: 'text/csv' });
+                // Export completed semesters (from grade sheet)
+                (completedSemesters || []).forEach(sem => {
+                    (sem.subjects || []).forEach(sub => {
+                        csv += `COMPLETED,${sem.semesterNumber || ''},${sem.name || ''},,,${sub.credits || 0},${sub.title || sub.name || ''},${sub.code || ''},${sub.type || ''},${sub.grade || ''},${sem.cgpa || ''},true,,,\n`;
+                    });
+                    // Add semester metadata
+                    csv += `SEMESTER_META,${sem.semesterNumber || ''},${sem.name || ''},,,,,,,${sem.cgpa || ''},true,,,\n`;
+                });
+
+                // Export planned semesters
+                (plannedSemesters || []).forEach(sem => {
+                    if (sem.inputMode === 'simple') {
+                        // Simple mode: just target GPA and credits
+                        csv += `PLANNED_SIMPLE,${sem.semesterNumber},Semester ${sem.semesterNumber},simple,${sem.targetGPA || 0},${sem.credits || 0},,,,,,false,,,\n`;
+                    } else {
+                        // Detailed mode: individual subjects
+                        (sem.subjects || []).forEach(sub => {
+                            csv += `PLANNED_DETAILED,${sem.semesterNumber},Semester ${sem.semesterNumber},detailed,,${sub.credits || 0},${sub.name || ''},,,${sub.grade || ''},,false,,,\n`;
+                        });
+                    }
+                });
+
+                // Export course planner data
+                const coursePlanData = localStorage.getItem('coursePlan_v1');
+                if (coursePlanData) {
+                    try {
+                        const coursePlan = JSON.parse(coursePlanData);
+                        Object.keys(coursePlan.semesters || {}).forEach(semNum => {
+                            (coursePlan.semesters[semNum] || []).forEach(course => {
+                                csv += `COURSE_PLAN,${semNum},,,,,${course.title || ''},${course.code || ''},${course.type || ''},,,,${course.category || ''},${course.credits || 0},${course.isNPTEL ? 'NPTEL' : ''}${course.autoAdded ? '|AUTO_ADDED' : ''}\n`;
+                            });
+                        });
+                    } catch (e) {
+                        console.error('Failed to export course plan:', e);
+                    }
+                }
+
+                // Export grade sheet metadata
+                if (gradeSheetMetadata) {
+                    // Basket details
+                    (gradeSheetMetadata.basketDetails || []).forEach(basket => {
+                        csv += `BASKET_META,,,,,,,,,,,,,${basket.basket || ''},${basket.credits || 0},\n`;
+                    });
+
+                    // CGPA details
+                    if (gradeSheetMetadata.cgpaDetails) {
+                        const cgpa = gradeSheetMetadata.cgpaDetails;
+                        csv += `CGPA_META,,,,,,,,,${cgpa.cgpa || 0},,,,CGPA,${cgpa.cgpa || 0},\n`;
+                        csv += `CGPA_META,,,,,,,,,,,,,CREDITS_REGISTERED,${cgpa.creditsRegistered || 0},\n`;
+                        csv += `CGPA_META,,,,,,,,,,,,,CREDITS_EARNED,${cgpa.creditsEarned || 0},\n`;
+
+                        // Grade distribution
+                        if (cgpa.gradeDistribution) {
+                            Object.keys(cgpa.gradeDistribution).forEach(grade => {
+                                csv += `GRADE_DIST,,,,,,,,,${grade},,,,${grade},${cgpa.gradeDistribution[grade]},\n`;
+                            });
+                        }
+                    }
+
+                    // Curriculum details
+                    (gradeSheetMetadata.curriculumDetails || []).forEach(curr => {
+                        csv += `CURRICULUM_META,,,,,,,,,,,,,${curr.type || ''},${curr.creditsRequired || 0},${curr.creditsEarned || 0}\n`;
+                    });
+                }
+
+                // Export max planned semester
+                csv += `CONFIG,,,,,,,,,,,,,MAX_PLANNED_SEMESTER,${maxPlannedSemester || 1},\n`;
+
+                // Create and download file
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'my_academic_profile.csv';
+                const timestamp = new Date().toISOString().split('T')[0];
+                a.download = `academic_data_${timestamp}.csv`;
+                document.body.appendChild(a); // Append to body
                 a.click();
+                document.body.removeChild(a); // Remove after click
+                window.URL.revokeObjectURL(url);
             };
 
             const handleImportCSV = (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
+
                 const reader = new FileReader();
                 reader.onload = (evt) => {
-                    const lines = evt.target.result.split('\n');
-                    const newProfile = [];
-                    const newCurrent = [];
-                    const newConfig = { ...config };
-                    let currentSemObj = null;
+                    try {
+                        const lines = evt.target.result.split('\n');
 
-                    lines.forEach((line, idx) => {
-                        if (idx === 0 || !line.trim()) return;
-                        const cols = line.split(',').map(c => c.trim());
-                        const context = cols[0];
-                        const name = cols[1];
-                        const subName = cols[2];
-                        const credits = parseFloat(cols[3]);
-                        const grade = cols[4];
+                        // Initialize data structures
+                        const newCompletedSemesters = [];
+                        const newPlannedSemesters = [];
+                        const newCoursePlan = { semesters: { 6: [], 7: [], 8: [] } };
+                        const newGradeSheetMetadata = {
+                            basketDetails: [],
+                            cgpaDetails: { cgpa: 0, creditsRegistered: 0, creditsEarned: 0, gradeDistribution: {} },
+                            curriculumDetails: []
+                        };
+                        let newMaxPlannedSemester = 1;
 
-                        if (context === 'PROFILE') {
-                            let sem = newProfile.find(s => s.name === name);
-                            if (!sem) {
-                                sem = { id: Date.now() + Math.random(), name: name, subjects: [] };
-                                newProfile.push(sem);
+                        // Parse CSV
+                        lines.forEach((line, idx) => {
+                            if (idx === 0 || !line.trim()) return; // Skip header and empty lines
+
+                            const cols = line.split(',').map(c => c.trim());
+                            const type = cols[0];
+                            const semNum = parseInt(cols[1]) || 0;
+                            const semName = cols[2];
+                            const inputMode = cols[3];
+                            const targetGPA = parseFloat(cols[4]) || 0;
+                            const credits = parseFloat(cols[5]) || 0;
+                            const subjectName = cols[6];
+                            const subjectCode = cols[7];
+                            const subjectType = cols[8];
+                            const grade = cols[9];
+                            const cgpa = parseFloat(cols[10]) || 0;
+                            const isCompleted = cols[11] === 'true';
+                            const category = cols[12];
+                            const value = cols[13];
+                            const notes = cols[14];
+
+                            if (type === 'COMPLETED') {
+                                // Find or create semester
+                                let sem = newCompletedSemesters.find(s => s.semesterNumber === semNum);
+                                if (!sem) {
+                                    sem = {
+                                        id: `completed-${semNum}`,
+                                        semesterNumber: semNum,
+                                        name: semName,
+                                        subjects: [],
+                                        cgpa: cgpa,
+                                        isCompleted: true
+                                    };
+                                    newCompletedSemesters.push(sem);
+                                }
+
+                                // Add subject if it has a name
+                                if (subjectName) {
+                                    sem.subjects.push({
+                                        id: Date.now() + Math.random(),
+                                        name: subjectName,
+                                        title: subjectName,
+                                        code: subjectCode,
+                                        type: subjectType,
+                                        credits: credits,
+                                        grade: grade
+                                    });
+                                }
                             }
-                            sem.subjects.push({ id: Date.now() + Math.random(), name: subName, credits, grade });
-                        }
-                        else if (context === 'CALCULATOR') {
-                            newCurrent.push({ id: Date.now() + Math.random(), name: subName, credits, grade });
-                        }
-                        else if (context === 'CONFIG') {
-                            if (name === 'Next Sem Enabled') newConfig.includeNext = (subName === 'true');
-                            if (name === 'Next Sem Credits') newConfig.nextCredits = parseFloat(subName);
-                            if (name === 'Next Target') newConfig.nextTarget = parseFloat(subName);
-                        }
-                    });
+                            else if (type === 'SEMESTER_META') {
+                                // Update semester CGPA
+                                let sem = newCompletedSemesters.find(s => s.semesterNumber === semNum);
+                                if (sem) {
+                                    sem.cgpa = cgpa;
+                                }
+                            }
+                            else if (type === 'PLANNED_SIMPLE') {
+                                newPlannedSemesters.push({
+                                    id: `planned-${semNum}`,
+                                    semesterNumber: semNum,
+                                    inputMode: 'simple',
+                                    targetGPA: targetGPA,
+                                    credits: credits,
+                                    subjects: []
+                                });
+                            }
+                            else if (type === 'PLANNED_DETAILED') {
+                                // Find or create planned semester
+                                let sem = newPlannedSemesters.find(s => s.semesterNumber === semNum);
+                                if (!sem) {
+                                    sem = {
+                                        id: `planned-${semNum}`,
+                                        semesterNumber: semNum,
+                                        inputMode: 'detailed',
+                                        targetGPA: 0,
+                                        credits: 0,
+                                        subjects: []
+                                    };
+                                    newPlannedSemesters.push(sem);
+                                }
 
-                    if (newProfile.length) setProfileSemesters(newProfile);
-                    if (newCurrent.length) setCurrentSemSubjects(newCurrent);
-                    setConfig(newConfig);
-                    alert("Profile Imported Successfully!");
+                                sem.subjects.push({
+                                    id: Date.now() + Math.random(),
+                                    name: subjectName,
+                                    credits: credits,
+                                    grade: grade
+                                });
+                            }
+                            else if (type === 'COURSE_PLAN') {
+                                if (newCoursePlan.semesters[semNum]) {
+                                    const course = {
+                                        code: subjectCode,
+                                        title: subjectName,
+                                        type: subjectType,
+                                        category: category,
+                                        credits: parseFloat(value) || 0,
+                                        isNPTEL: notes.includes('NPTEL'),
+                                        autoAdded: notes.includes('AUTO_ADDED'),
+                                        countsTowardLimit: true
+                                    };
+                                    newCoursePlan.semesters[semNum].push(course);
+                                }
+                            }
+                            else if (type === 'BASKET_META') {
+                                newGradeSheetMetadata.basketDetails.push({
+                                    basket: category,
+                                    credits: parseFloat(value) || 0
+                                });
+                            }
+                            else if (type === 'CGPA_META') {
+                                if (category === 'CGPA') {
+                                    newGradeSheetMetadata.cgpaDetails.cgpa = parseFloat(value) || 0;
+                                } else if (category === 'CREDITS_REGISTERED') {
+                                    newGradeSheetMetadata.cgpaDetails.creditsRegistered = parseFloat(value) || 0;
+                                } else if (category === 'CREDITS_EARNED') {
+                                    newGradeSheetMetadata.cgpaDetails.creditsEarned = parseFloat(value) || 0;
+                                }
+                            }
+                            else if (type === 'GRADE_DIST') {
+                                newGradeSheetMetadata.cgpaDetails.gradeDistribution[grade] = parseInt(value) || 0;
+                            }
+                            else if (type === 'CURRICULUM_META') {
+                                newGradeSheetMetadata.curriculumDetails.push({
+                                    type: category,
+                                    creditsRequired: parseFloat(value) || 0,
+                                    creditsEarned: parseFloat(notes) || 0
+                                });
+                            }
+                            else if (type === 'CONFIG') {
+                                if (category === 'MAX_PLANNED_SEMESTER') {
+                                    newMaxPlannedSemester = parseInt(value) || 1;
+                                }
+                            }
+                        });
+
+                        // Sort semesters by number
+                        newCompletedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
+                        newPlannedSemesters.sort((a, b) => a.semesterNumber - b.semesterNumber);
+
+                        // Update state
+                        setCompletedSemesters(newCompletedSemesters);
+                        setPlannedSemesters(newPlannedSemesters);
+                        setGradeSheetMetadata(newGradeSheetMetadata);
+                        setMaxPlannedSemester(newMaxPlannedSemester);
+
+                        // Save course plan to localStorage
+                        localStorage.setItem('coursePlan_v1', JSON.stringify(newCoursePlan));
+
+                        // Show success message
+                        alert('✅ Data imported successfully! Your academic data has been restored.');
+
+                    } catch (error) {
+                        console.error('Import error:', error);
+                        alert('❌ Failed to import data. Please check the file format.');
+                    }
                 };
                 reader.readAsText(file);
+
+                // Reset file input
+                e.target.value = '';
             };
 
             // Views are defined outside App
@@ -1388,37 +3226,69 @@
                                 </button>
                                 <button
                                     onClick={() => setView('profile')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'profile' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
                                 >
                                     Profile
                                 </button>
                                 <button
+                                    onClick={() => setView('gradesheet')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'gradesheet' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                                >
+                                    Grade Sheet
+                                </button>
+                                <button
+                                    onClick={() => setView('planner')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'planner' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                                >
+                                    Course Planner
+                                </button>
+                                <button
                                     onClick={() => setView('report')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'report' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'report' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
                                 >
                                     Report
+                                </button>
+                                <button
+                                    onClick={() => setView('curriculum')}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${view === 'curriculum' ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-500 hover:text-slate-900'}`}
+                                >
+                                    Curriculum
                                 </button>
                             </nav>
                         </div>
                     </header>
 
                     {view === 'dashboard' && <CalculatorView
-                        currentSemSubjects={currentSemSubjects}
-                        setCurrentSemSubjects={setCurrentSemSubjects}
-                        currentStats={currentStats}
-                        config={config}
-                        setConfig={setConfig}
-                        profileSemesters={profileSemesters}
+                        completedSemesters={completedSemesters}
+                        plannedSemesters={plannedSemesters}
+                        setPlannedSemesters={setPlannedSemesters}
+                        maxPlannedSemester={maxPlannedSemester}
+                        setMaxPlannedSemester={setMaxPlannedSemester}
                         totals={totals}
                         historyStats={historyStats}
+                        completedStats={completedStats}
+                        plannedStats={plannedStats}
                         handleExportCSV={handleExportCSV}
                         handleImportCSV={handleImportCSV}
                         setView={setView}
+                        courseCatalog={courseCatalog}
                     />}
                     {view === 'profile' && <ProfileView
                         profileSemesters={profileSemesters}
                         setProfileSemesters={setProfileSemesters}
                         setIsImportModalOpen={setIsImportModalOpen}
+                        courseCatalog={courseCatalog}
+                    />}
+                    {view === 'gradesheet' && <GradeSheetView
+                        completedSemesters={completedSemesters}
+                        gradeSheetMetadata={gradeSheetMetadata}
+                    />}
+                    {view === 'planner' && <CoursePlannerView
+                        completedSemesters={completedSemesters}
+                        courseCatalog={courseCatalog}
+                        onUpdatePlan={(plan) => {
+                            // Optional: sync with plannedSemesters state if needed
+                        }}
                     />}
                     {view === 'report' && <ReportView
                         totals={totals}
@@ -1427,13 +3297,21 @@
                         currentSemSubjects={currentSemSubjects}
                         config={config}
                     />}
+                    {view === 'curriculum' && <CurriculumView courseCatalog={courseCatalog} />}
 
                     <SmartImportModal
                         isOpen={isImportModalOpen}
                         onClose={() => setIsImportModalOpen(false)}
                         onImport={(data) => {
-                            setProfileSemesters(data);
-                            setView('profile');
+                            // Update new data model
+                            setCompletedSemesters(data.semesters);
+                            setGradeSheetMetadata(data.metadata);
+                            setMaxPlannedSemester(data.semesters.length + 1);
+
+                            // Also update legacy model for backward compatibility
+                            setProfileSemesters(data.semesters);
+
+                            setView('gradesheet');
                         }}
                     />
                 </div>
